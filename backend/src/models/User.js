@@ -1,0 +1,30 @@
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password_hash: { type: String, required: true },
+    role: {
+        type: String,
+        required: true,
+        default: 'employee',
+        enum: ['super_admin', 'superadmin', 'admin', 'manager', 'marketing', 'employee']
+    },
+    avatar_url: { type: String },
+    is_active: { type: Boolean, required: true, default: true },
+    permissions: { type: Object, required: true, default: {} },
+    last_login: { type: Date }
+}, {
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    toJSON: {
+        transform: (doc, ret) => {
+            ret.id = ret._id;
+            delete ret._id;
+            delete ret.__v;
+            delete ret.password_hash;
+        }
+    }
+});
+
+module.exports = mongoose.model('User', userSchema);
+

@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+
+# Build output
+dist/
+build/
+
+# Logs
+logs/
+*.log
+err_log.txt
+
+# Uploads & Exports (user data)
+uploads/
+exports/
+temp/
+
+# IDE
+.vscode/
+.idea/
+
+# Cache & Coverage & Configs
+coverage/
+.cache/
+ecosystem.config.js
+
+# OS
+.DS_Store
+Thumbs.db
