@@ -4,15 +4,14 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TablePagination, CircularProgress, Alert, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, MenuItem, Checkbox,
-  LinearProgress, Menu, FormControlLabel, FormGroup,
+  LinearProgress, Menu, FormControlLabel, FormGroup, InputAdornment, Grid
 } from '@mui/material';
 import {
   Add, FileDownload, FileUpload, Edit, Delete, AutoAwesome,
-  LinkedIn, OpenInNew, MoreVert, SelectAll, Search,
+  LinkedIn, OpenInNew, MoreVert, SelectAll, Search, FilterList, Refresh
 } from '@mui/icons-material';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
-import FilterPanel from '../components/leads/FilterPanel';
 import LeadForm from '../components/leads/LeadForm';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -31,17 +30,6 @@ const headSx = {
   position: 'sticky', top: 0, zIndex: 2,
 };
 
-const ScoreChip = ({ score }) => {
-  const color = score >= 80 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
-  const bg = score >= 80 ? 'rgba(16,185,129,0.12)' : score >= 50 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)';
-  return (
-    <Chip label={score} size="small"
-      sx={{
-        bgcolor: bg, color, fontWeight: 700, height: 20, fontSize: 11,
-        border: `1px solid ${color}30`, minWidth: 38
-      }} />
-  );
-};
 
 const StatusChip = ({ status }) => {
   const map = {
@@ -59,8 +47,8 @@ const StatusChip = ({ status }) => {
 };
 
 const availableExportCols = [
-  'id', 'first_name', 'last_name', 'email', 'job_title', 'company', 'industry', 'country',
-  'keyword', 'lead_score', 'status', 'source', 'linkedin', 'created_at'
+  'id', 'first_name', 'last_name', 'phone', 'email', 'job_title', 'company', 'client_description', 'industry', 'country',
+  'keyword', 'status', 'source', 'linkedin', 'created_at'
 ];
 
 export default function LeadsPage() {
@@ -74,6 +62,8 @@ export default function LeadsPage() {
   const [page, setPage] = useState(0);
   const [rpp, setRpp] = useState(50);
   const [filters, setFilters] = useState({});
+  const [search, setSearch] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
   const [loading, setL] = useState(false);
   const [selected, setSel] = useState([]);
   const [formOpen, setFO] = useState(false);
@@ -93,17 +83,16 @@ export default function LeadsPage() {
     setL(true);
     try {
       const p = new URLSearchParams({ page: page + 1, limit: rpp, ...filters });
+      if (search) p.set('search', search);
       const { data } = await api.get(`/leads?${p}`);
       setRows(data.data);
       setTotal(data.total);
       setSel([]);
     } catch { toast.error('Failed to load leads'); }
     finally { setL(false); }
-  }, [page, rpp, filters]);
+  }, [page, rpp, filters, search]);
 
   useEffect(() => { load(); }, [load]);
-
-  const handleFilter = (f) => { setFilters(f); setPage(0); };
 
   const handleExport = async () => {
     if (exporting) return;
@@ -186,6 +175,7 @@ export default function LeadsPage() {
 
       const fd = new FormData();
       fd.append('file', impFile);
+      fd.append('imported_tab', 'Leads');
       const { data } = await api.post('/leads/import', fd);
       toast.success(data.message);
       setImpO(false); setImpF(null); load();
@@ -212,10 +202,10 @@ export default function LeadsPage() {
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', flexDirection: { xs: 'column', lg: 'row' }, gap: { xs: 2, lg: 0 }, mb: 3 }}>
         <Box>
           <Typography variant="h4" fontWeight={800} color="#f0f9ff"
-            sx={{ fontFamily: 'Georgia, serif' }}>
+            sx={{ fontFamily: 'Georgia, serif', fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
             Leads Intelligence
           </Typography>
           <Typography variant="body2" color="rgba(240,249,255,0.35)">
@@ -223,7 +213,7 @@ export default function LeadsPage() {
             {selected.length > 0 && ` · ${selected.length} selected`}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: { xs: '100%', lg: 'auto' }, '& > button': { flex: { xs: '1 1 auto', sm: 'none' } } }}>
           {selected.length > 0 && isManager && (
             <Button variant="outlined" color="error" size="small"
               onClick={() => setDelId('bulk')}
@@ -257,7 +247,79 @@ export default function LeadsPage() {
         </Box>
       </Box>
 
-      <FilterPanel onFilter={handleFilter} resultCount={total} />
+      {/* Search and Filters Bar */}
+      <Card sx={{ borderRadius: 2.5, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', overflow: 'hidden', mb: 3 }}>
+        <Box sx={{ p: { xs: 2, sm: 3 }, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { xs: 'stretch', md: 'center' }, borderBottom: showFilters ? '1px solid rgba(255,255,255,0.05)' : 'none', bgcolor: 'rgba(14,165,233,0.02)' }}>
+          <TextField
+            placeholder="Search keyword, email, company or title..."
+            size="small"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            sx={{
+              width: { xs: '100%', md: 350 },
+              '& .MuiInputBase-root': { bgcolor: 'rgba(255,255,255,0.03)', color: '#f0f9ff', borderRadius: 2 },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(14,165,233,0.2)' }
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search sx={{ color: 'rgba(240,249,255,0.3)' }} />
+                </InputAdornment>
+              ),
+              endAdornment: (
+                <InputAdornment position="end">
+                  <Tooltip title="Refresh Data">
+                    <IconButton size="small" onClick={load} sx={{ color: 'rgba(240,249,255,0.2)' }}><Refresh fontSize="small" /></IconButton>
+                  </Tooltip>
+                </InputAdornment>
+              )
+            }}
+          />
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Button variant="outlined" startIcon={<FilterList />}
+              onClick={() => setShowFilters(!showFilters)}
+              sx={{ color: showFilters ? '#38bdf8' : 'rgba(240,249,255,0.5)', borderColor: 'rgba(14,165,233,0.3)', bgcolor: showFilters ? 'rgba(14,165,233,0.1)' : 'transparent' }}>
+              Filters
+            </Button>
+          </Box>
+        </Box>
+
+        {showFilters && (
+          <Box sx={{ p: 2, bgcolor: '#0b162c' }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" placeholder="Keywords (comma separated)"
+                  value={filters.keyword || ''} onChange={e => setFilters({ ...filters, keyword: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" placeholder="Job Title"
+                  value={filters.job_title || ''} onChange={e => setFilters({ ...filters, job_title: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" placeholder="Company"
+                  value={filters.company || ''} onChange={e => setFilters({ ...filters, company: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" placeholder="Country"
+                  value={filters.country || ''} onChange={e => setFilters({ ...filters, country: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" placeholder="Source"
+                  value={filters.source || ''} onChange={e => setFilters({ ...filters, source: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
+              </Grid>
+            </Grid>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
+              <Button size="small" onClick={() => { setFilters({}); setSearch(''); setPage(0); }}
+                sx={{ color: 'rgba(240,249,255,0.4)' }}>Clear Filters</Button>
+            </Box>
+          </Box>
+        )}
+      </Card>
 
       <Card sx={{ borderRadius: 2.5, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', overflow: 'hidden' }}>
         {loading && <LinearProgress sx={{ bgcolor: 'rgba(14,165,233,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#0ea5e9' } }} />}
@@ -271,7 +333,7 @@ export default function LeadsPage() {
                   <Checkbox size="small" checked={allSelected} onChange={toggleAll}
                     sx={{ color: 'rgba(255,255,255,0.2)', '&.Mui-checked': { color: '#0ea5e9' } }} />
                 </TableCell>
-                {['Added Date', 'Added By', 'Keyword / Owner', 'Company', 'Company Desc', 'First Name', 'Last Name', 'Email', 'Job Title', 'Country', 'Source', 'Score', 'Status'].map(h => (
+                {['Added Date', 'Added By', 'Keyword / Owner', 'Contact Number', 'Email', 'Company Name', 'Client Description', 'Country', 'Source', 'Status'].map(h => (
                   <TableCell key={h} sx={headSx}>{h}</TableCell>
                 ))}
                 {canEditDelete && <TableCell sx={{ ...headSx, maxWidth: 80 }}>Actions</TableCell>}
@@ -334,7 +396,21 @@ export default function LeadsPage() {
                     </Tooltip>
                   </TableCell>
 
-                  {/* ── Company ──────────────────────────────────── */}
+                  {/* ── Contact Number ────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
+                    <Tooltip title={row.phone || '—'} placement="top" arrow>
+                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.phone || '—'}</Typography>
+                    </Tooltip>
+                  </TableCell>
+
+                  {/* ── Email ───────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 220 }}>
+                    <Tooltip title={row.email || '—'} placement="top" arrow>
+                      <Typography variant="body2" color="#38bdf8" noWrap>{row.email || '—'}</Typography>
+                    </Tooltip>
+                  </TableCell>
+
+                  {/* ── Company Name ──────────────────────────────────── */}
                   <TableCell sx={{ ...cellSx, maxWidth: 180 }}>
                     <Tooltip title={`${typeof row.company === 'object' && row.company !== null ? (row.company.company_name || row.company.company || '') : row.company || '—'}${row.domain ? '\n' + row.domain : ''}`} placement="top" arrow>
                       <Box>
@@ -356,40 +432,12 @@ export default function LeadsPage() {
                     </Tooltip>
                   </TableCell>
 
-                  {/* ── Company Desc ─────────────────────────────── */}
+                  {/* ── Client Description ─────────────────────────────── */}
                   <TableCell sx={{ ...cellSx, maxWidth: 200 }}>
-                    <Tooltip title={row.company_desc || 'No description available'} placement="top" arrow>
+                    <Tooltip title={row.client_description || 'No description available'} placement="top" arrow>
                       <Typography variant="body2" color="rgba(240,249,255,0.6)" noWrap>
-                        {row.company_desc || '—'}
+                        {row.client_description || '—'}
                       </Typography>
-                    </Tooltip>
-                  </TableCell>
-
-                  {/* ── First Name ──────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 130 }}>
-                    <Tooltip title={row.first_name || '—'} placement="top" arrow>
-                      <Typography variant="body2" noWrap>{row.first_name || '—'}</Typography>
-                    </Tooltip>
-                  </TableCell>
-
-                  {/* ── Last Name ───────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 130 }}>
-                    <Tooltip title={row.last_name || '—'} placement="top" arrow>
-                      <Typography variant="body2" noWrap>{row.last_name || '—'}</Typography>
-                    </Tooltip>
-                  </TableCell>
-
-                  {/* ── Email ───────────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 220 }}>
-                    <Tooltip title={row.email || '—'} placement="top" arrow>
-                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.email || '—'}</Typography>
-                    </Tooltip>
-                  </TableCell>
-
-                  {/* ── Job Title ───────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 180 }}>
-                    <Tooltip title={row.job_title || '—'} placement="top" arrow>
-                      <Typography variant="body2" color="#38bdf8" fontWeight={500} noWrap>{row.job_title || '—'}</Typography>
                     </Tooltip>
                   </TableCell>
 
@@ -407,16 +455,6 @@ export default function LeadsPage() {
                         <Chip label={row.source || 'Unknown'} size="small" sx={{ bgcolor: 'rgba(14,165,233,0.1)', color: '#38bdf8', maxWidth: '100%', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
                       </Box>
                     </Tooltip>
-                  </TableCell>
-
-
-
-                  {/* ── Score ───────────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 70 }}>
-                    {row.lead_score > 0
-                      ? <ScoreChip score={row.lead_score} />
-                      : <Typography variant="caption" color="rgba(255,255,255,0.2)">—</Typography>
-                    }
                   </TableCell>
 
                   {/* ── Status ──────────────────────────────────── */}

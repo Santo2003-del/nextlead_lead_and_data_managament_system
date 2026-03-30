@@ -121,7 +121,7 @@ const convertToLeads = async (ids, user) => {
             website: website,
             job_title: d.job_title,
             country: d.country,
-            company_desc: companyDesc,
+            client_description: companyDesc,
             keyword: d.keyword,
             keywordId: d.keywordId,
             source: d.source || 'Manual',

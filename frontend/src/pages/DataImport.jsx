@@ -43,6 +43,7 @@ export default function DataImport() {
     setResult(null);
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('imported_tab', 'Data Import Component');
 
     try {
       const { data } = await api.post('/leads/import', fd);

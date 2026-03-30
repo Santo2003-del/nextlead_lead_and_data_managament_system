@@ -280,6 +280,11 @@ export default function LoginPage() {
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.08)' },
                         '&:hover fieldset': { borderColor: `${selectedRole.color}40 !important` },
                         '&.Mui-focused fieldset': { borderColor: `${selectedRole.color} !important` },
+                        '& input:-webkit-autofill': {
+                          WebkitBoxShadow: '0 0 0 1000px rgba(15,25,45,0.85) inset !important',
+                          WebkitTextFillColor: '#e2f4ff !important',
+                          transition: 'background-color 5000s ease-in-out 0s',
+                        }
                       }
                     }}
                     InputLabelProps={{ sx: { color: 'rgba(240,249,255,0.4)' } }}
@@ -297,6 +302,11 @@ export default function LoginPage() {
                         '& fieldset': { borderColor: 'rgba(255,255,255,0.08)' },
                         '&:hover fieldset': { borderColor: `${selectedRole.color}40 !important` },
                         '&.Mui-focused fieldset': { borderColor: `${selectedRole.color} !important` },
+                        '& input:-webkit-autofill': {
+                          WebkitBoxShadow: '0 0 0 1000px rgba(15,25,45,0.85) inset !important',
+                          WebkitTextFillColor: '#e2f4ff !important',
+                          transition: 'background-color 5000s ease-in-out 0s',
+                        }
                       },
                       endAdornment: (
                         <InputAdornment position="end">

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon, ListItemText,
   AppBar, Toolbar, Typography, IconButton, Avatar, Tooltip,
-  Divider, Chip, Badge, useMediaQuery, useTheme,
+  Divider, Chip, Badge, useMediaQuery, useTheme, Menu, MenuItem,
 } from '@mui/material';
 import {
   Dashboard, PeopleAlt, TravelExplore, BarChart,
@@ -12,6 +12,7 @@ import {
   CloudUploadOutlined, Insights, Close,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
+import api from '../../utils/api';
 
 const DRAWER_W = 248;
 
@@ -61,6 +62,64 @@ export default function AppLayout() {
   const [collapsed, setC] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const dw = collapsed ? 66 : DRAWER_W;
+
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifAnchor, setNotifAnchor] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    let lastChecked = new Date().toISOString();
+
+    const fetchRecentLeads = async () => {
+      try {
+        const { data } = await api.get('/leads?limit=5&sort=created_at&order=desc');
+        if (active && data?.data) {
+          setNotifications(data.data.slice(0, 5));
+        }
+      } catch (err) {}
+    };
+    fetchRecentLeads();
+
+    const intervalId = setInterval(async () => {
+      try {
+        const { data } = await api.get('/leads?limit=5&sort=created_at&order=desc');
+        if (active && data?.data) {
+           const newLeads = data.data.filter(l => new Date(l.created_at) > new Date(lastChecked));
+           if (newLeads.length > 0) {
+             setNotifications(prev => {
+                const combined = [...newLeads, ...prev];
+                const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+                return unique.slice(0, 5); 
+             });
+             setUnreadCount(prev => prev + newLeads.length);
+             lastChecked = new Date().toISOString();
+           }
+        }
+      } catch (err) {}
+    }, 60000);
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  const handleNotifClick = () => {
+    setUnreadCount(0);
+    setNotifAnchor(null);
+    nav('/insights');
+  };
+
+  const timeAgo = (dateStr) => {
+    if (!dateStr) return '';
+    const min = Math.floor((new Date() - new Date(dateStr)) / 60000);
+    if (min < 1) return 'Just now';
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    return `${Math.floor(hr/24)}d ago`;
+  };
 
   const handleNavClick = (path) => {
     nav(path);
@@ -207,12 +266,63 @@ export default function AppLayout() {
             </IconButton>
             <Box sx={{ flex: 1 }} />
             <Tooltip title="Notifications">
-              <IconButton size="small" sx={{ color: 'rgba(255,255,255,0.4)', mr: 1 }}>
-                <Badge badgeContent={3} color="error" sx={{ '& .MuiBadge-badge': { fontSize: 9 } }}>
+              <IconButton 
+                size="small" 
+                onClick={(e) => setNotifAnchor(e.currentTarget)}
+                sx={{ color: 'rgba(255,255,255,0.4)', mr: 1 }}
+              >
+                <Badge badgeContent={unreadCount} color="error" sx={{ '& .MuiBadge-badge': { fontSize: 9 } }}>
                   <NotificationsNoneOutlined fontSize="small" />
                 </Badge>
               </IconButton>
             </Tooltip>
+            
+            <Menu
+              anchorEl={notifAnchor}
+              open={Boolean(notifAnchor)}
+              onClose={() => setNotifAnchor(null)}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              PaperProps={{
+                sx: {
+                  mt: 1.5, width: 280, borderRadius: 2, bgcolor: '#0d1f3c',
+                  border: '1px solid rgba(14,165,233,0.2)', color: '#f0f9ff',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+                }
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ px: 2, py: 1.5, fontWeight: 700, color: '#f0f9ff' }}>
+                Recent Leads Activity
+              </Typography>
+              <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+              {notifications.length === 0 ? (
+                <MenuItem sx={{ py: 3, justifyContent: 'center', pointerEvents: 'none' }}>
+                  <Typography variant="body2" color="rgba(255,255,255,0.4)">No recent leads.</Typography>
+                </MenuItem>
+              ) : (
+                notifications.map(n => (
+                  <MenuItem key={n.id} onClick={handleNotifClick} sx={{ 
+                    whiteSpace: 'normal', py: 1.5, px: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                    borderBottom: '1px solid rgba(255,255,255,0.04)', '&:hover': { bgcolor: 'rgba(14,165,233,0.1)' }
+                  }}>
+                    <Typography variant="body2" fontWeight={600} color="#38bdf8" mb={0.5}>
+                      New lead added: {n.first_name || ''} {n.last_name || ''}
+                    </Typography>
+                    <Typography variant="caption" color="rgba(240,249,255,0.6)" display="block">
+                      {n.company || n.domain || 'Unknown Company'}
+                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mt: 0.5 }}>
+                      <Typography variant="caption" color="rgba(255,255,255,0.3)">
+                        Added By: {n.createdByName || 'System'}
+                      </Typography>
+                      <Typography variant="caption" color="#10b981">
+                        {timeAgo(n.created_at || n.createdAt)}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))
+              )}
+            </Menu>
             <Avatar sx={{ width: 30, height: 30, bgcolor: '#0369a1', fontSize: 12, fontWeight: 700 }}>
               {user?.name?.[0]?.toUpperCase()}
             </Avatar>

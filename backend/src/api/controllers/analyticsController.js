@@ -25,11 +25,8 @@ const globalInsights = async (req, res) => {
     const thirtyDaysAgo = new Date(now);
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Role-based data isolation
+    // Role-based data isolation (REMOVED: Now system-wide visibility for all users)
     const matchStage = {};
-    if (!isAdminRole(req.user.role)) {
-      matchStage.added_by = new mongoose.Types.ObjectId(req.user.id);
-    }
 
     const [
       totalLeads,
@@ -286,13 +283,7 @@ const performanceTable = async (req, res) => {
 
     const matchStage = {};
 
-    // Role-based visibility
-    if (!['superadmin', 'admin', 'manager', 'super_admin'].includes(req.user.role)) {
-      matchStage.$or = [
-        { createdBy: new mongoose.Types.ObjectId(req.user.id) },
-        { added_by: new mongoose.Types.ObjectId(req.user.id) }
-      ];
-    }
+    // Role-based visibility (REMOVED: Now system-wide visibility for all users)
 
     const pipeline = [
       { $match: matchStage },
@@ -372,13 +363,8 @@ const performanceTable = async (req, res) => {
 
     const aggregatedData = await Lead.aggregate(pipeline);
 
-    // Fetch all relevant active users 
-    let activeUsers = [];
-    if (!['superadmin', 'admin', 'manager', 'super_admin'].includes(req.user.role)) {
-      activeUsers = await User.find({ _id: req.user.id, is_active: true }).select('name _id').lean();
-    } else {
-      activeUsers = await User.find({ is_active: true }).select('name _id').lean();
-    }
+    // Fetch all relevant active users for system-wide performance table
+    const activeUsers = await User.find({ is_active: true }).select('name _id').lean();
 
     const userMap = {};
     aggregatedData.forEach(item => {

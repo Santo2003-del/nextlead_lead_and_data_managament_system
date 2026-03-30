@@ -98,7 +98,7 @@ async function scrapeUrl({ url, selectors }) {
         domain: ldJson.url ? new URL(ldJson.url).hostname.replace('www.', '') : null,
         phone: ldJson.telephone,
         country: ldJson.address?.addressCountry,
-        company_desc: ldJson.description,
+        client_description: ldJson.description,
         source: 'web_scrape',
       });
     }

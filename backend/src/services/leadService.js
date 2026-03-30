@@ -98,7 +98,7 @@ const listLeads = async ({ filters = {}, page = 1, limit = 50, sort = 'created_a
 const createLead = async (data, userId) => {
   let {
     first_name, last_name, job_title, email, phone, linkedin, company, domain, website,
-    industry, country, city, employee_size, revenue, company_desc,
+    industry, country, city, employee_size, revenue, client_description,
     keywords = [], keyword, notes, source = 'Manual', status = 'new', name,
   } = data;
 
@@ -150,7 +150,7 @@ const createLead = async (data, userId) => {
   const lead = await Lead.create({
     first_name, last_name, job_title, email: email?.toLowerCase()?.trim(), phone, linkedin,
     company, domain: domain?.toLowerCase()?.trim(), website,
-    industry, country, city, employee_size, revenue, company_desc,
+    industry, country, city, employee_size, revenue, client_description,
     keywords, keyword, keywordId: resolvedKeywordId, notes, source: source || 'Manual', status, added_by: userId,
     createdBy: userId,
     createdByName,
@@ -307,7 +307,7 @@ const bulkCreate = async (records, userId) => {
 // ── Update lead ───────────────────────────────────────────────
 const updateLead = async (id, data) => {
   const FIELDS = ['name', 'email', 'phone', 'linkedin', 'company', 'domain', 'website',
-    'industry', 'country', 'city', 'employee_size', 'revenue', 'company_desc',
+    'industry', 'country', 'city', 'employee_size', 'revenue', 'client_description',
     'keywords', 'notes', 'source', 'status', 'lead_score'];
   const updateData = {};
 

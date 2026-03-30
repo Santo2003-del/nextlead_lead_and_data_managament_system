@@ -2,20 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   Box, Grid, Card, CardContent, Typography, Skeleton, Chip,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Tabs, Tab, useMediaQuery, TextField, InputAdornment, TableSortLabel, TablePagination, Tooltip
+  Tabs, Tab, TextField, InputAdornment, TableSortLabel, TablePagination, Tooltip,
 } from '@mui/material';
 import {
-  PeopleAlt, TrendingUp, CalendarToday, DateRange,
-  BarChart as BarChartIcon, Search
+  PeopleAlt, TrendingUp, CalendarToday, DateRange, Search
 } from '@mui/icons-material';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend,
-} from 'recharts';
+
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
-const COLORS = ['#0ea5e9', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#06b6d4', '#a78bfa', '#f472b6'];
+
 
 const StatCard = ({ title, value, icon: Icon, color, loading }) => (
   <Card sx={{
@@ -42,19 +38,7 @@ const StatCard = ({ title, value, icon: Icon, color, loading }) => (
   </Card>
 );
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <Box sx={{ bgcolor: '#0a1628', border: '1px solid rgba(14,165,233,0.2)', borderRadius: 1.5, px: 2, py: 1 }}>
-      <Typography variant="caption" color="#f0f9ff" fontWeight={600}>{label}</Typography>
-      {payload.map((p, i) => (
-        <Typography key={i} variant="caption" display="block" color={p.color || '#0ea5e9'}>
-          {p.name}: {p.value}
-        </Typography>
-      ))}
-    </Box>
-  );
-};
+
 
 const safeRender = (val, fallback = 'N/A') => {
   if (!val) return fallback;
@@ -66,9 +50,7 @@ const safeRender = (val, fallback = 'N/A') => {
 export default function GlobalInsightsPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const isMobile = useMediaQuery('(max-width:600px)');
   const { user } = useAuth();
-  const isLimitedRole = ['employee', 'marketing'].includes(user?.role);
 
   // Performance Table State
   const [perfData, setPerfData] = useState([]);
@@ -102,7 +84,52 @@ export default function GlobalInsightsPage() {
     setPerfSortBy(field);
   };
 
-  const activeUser = perfData[activeTab];
+  const combinedTabs = useMemo(() => {
+    if (loading || perfLoading) return [];
+    
+    // Create the "All Users" tab aggregate
+    const allUsersTab = {
+      userId: 'all',
+      userName: 'All Users',
+      totalLeads: data?.totalLeads || 0,
+      leadsToday: data?.leadsToday || 0,
+      leadsThisWeek: data?.leadsThisWeek || 0,
+      leadsThisMonth: data?.leadsThisMonth || 0,
+      rawActivity: [],
+      leadsByKeyword: data?.leadsByKeyword || []
+    };
+    
+    let allActivity = [];
+    perfData.forEach(p => {
+      if (p.rawActivity) {
+        allActivity = allActivity.concat(p.rawActivity);
+      }
+    });
+    // Sort allActivity by date desc
+    allActivity.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    allUsersTab.rawActivity = allActivity;
+
+    const userTabs = perfData.map(userObj => {
+      // Calculate pieData for this specific user
+      const kwCount = {};
+      (userObj.rawActivity || []).forEach(act => {
+        const kw = act.keyword || 'Unknown';
+        kwCount[kw] = (kwCount[kw] || 0) + 1;
+      });
+      const leadsByKeyword = Object.entries(kwCount)
+           .map(([k, v]) => ({ keyword: k, count: v }))
+           .sort((a,b) => b.count - a.count);
+
+      return {
+        ...userObj,
+        leadsByKeyword
+      };
+    });
+
+    return [allUsersTab, ...userTabs];
+  }, [data, perfData, loading, perfLoading]);
+
+  const activeUser = combinedTabs[activeTab];
   let activeActivity = activeUser ? (activeUser.rawActivity || []) : [];
 
   if (perfSearch) {
@@ -127,49 +154,39 @@ export default function GlobalInsightsPage() {
 
   const paginatedActivity = activeActivity.slice(perfPage * perfRowsPerPage, perfPage * perfRowsPerPage + perfRowsPerPage);
 
-  const pieData = useMemo(() => {
-    if (!data?.leadsByKeyword?.length) return [];
-    return data.leadsByKeyword.slice(0, 8).map((k, i) => ({
-      name: k.keyword?.length > 18 ? k.keyword.slice(0, 18) + '…' : k.keyword,
-      fullName: k.keyword,
-      value: k.count,
-      color: COLORS[i % COLORS.length],
-    }));
-  }, [data]);
+
 
   return (
     <Box sx={{ p: { xs: 1, md: 3 } }}>
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" fontWeight={800} color="#f0f9ff"
-          sx={{ fontFamily: 'Georgia, serif' }}>
-          {isLimitedRole ? 'My Insights' : 'Global Insights'}
+          sx={{ fontFamily: '"DM Sans", Georgia, serif' }}>
+          Global Insights
         </Typography>
         <Typography variant="body2" color="rgba(240,249,255,0.4)">
-          {isLimitedRole ? 'Your personal lead generation analytics' : 'Real-time platform-wide lead generation analytics'}
+          Real-time platform-wide lead generation analytics
         </Typography>
       </Box>
 
-      {/* Summary Cards */}
+      {/* Global Summary Cards */}
       <Grid container spacing={2} mb={4}>
         <Grid item xs={6} sm={3}>
-          <StatCard title={isLimitedRole ? 'My Total Leads' : 'Total Leads'} value={data?.totalLeads} icon={PeopleAlt} color="#0ea5e9" loading={loading} />
+          <StatCard title="Total Leads" value={data?.totalLeads || 0} icon={PeopleAlt} color="#0ea5e9" loading={loading} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <StatCard title={isLimitedRole ? 'My Leads Today' : 'Added Today'} value={data?.leadsToday} icon={CalendarToday} color="#10b981" loading={loading} />
+          <StatCard title="Added Today" value={data?.leadsToday || 0} icon={CalendarToday} color="#10b981" loading={loading} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <StatCard title={isLimitedRole ? 'My This Week' : 'This Week'} value={data?.leadsThisWeek} icon={DateRange} color="#f59e0b" loading={loading} />
+          <StatCard title="This Week" value={data?.leadsThisWeek || 0} icon={DateRange} color="#f59e0b" loading={loading} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <StatCard title={isLimitedRole ? 'My This Month' : 'This Month'} value={data?.leadsThisMonth} icon={TrendingUp} color="#8b5cf6" loading={loading} />
+          <StatCard title="This Month" value={data?.leadsThisMonth || 0} icon={TrendingUp} color="#8b5cf6" loading={loading} />
         </Grid>
       </Grid>
 
-
-
-      {/* User Leaderboard Table */}
-      <Card sx={{ borderRadius: 2.5, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)' }}>
+      {/* User Leaderboard — always visible */}
+      <Card sx={{ borderRadius: 2.5, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', mb: 4 }}>
         <CardContent>
           <Typography variant="subtitle1" fontWeight={700} color="#f0f9ff" mb={2}>
             User Leaderboard
@@ -214,11 +231,12 @@ export default function GlobalInsightsPage() {
         </CardContent>
       </Card>
 
-      {/* Lead Performance Breakdown Table */}
-      <Card sx={{ borderRadius: 2.5, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', mt: 4 }}>
+      {/* Lead Performance Breakdown — full section in one card */}
+      <Card sx={{ borderRadius: 2.5, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)' }}>
         <CardContent>
+          {/* Section Header + Search */}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Typography variant="subtitle1" fontWeight={700} color="#f0f9ff">
+            <Typography variant="h6" fontWeight={700} color="#f0f9ff">
               Lead Performance Breakdown
             </Typography>
             <TextField
@@ -227,10 +245,14 @@ export default function GlobalInsightsPage() {
               value={perfSearch}
               onChange={(e) => setPerfSearch(e.target.value)}
               InputProps={{
-                startAdornment: <InputAdornment position="start"><Search sx={{ color: 'rgba(240,249,255,0.4)', fontSize: 20 }} /></InputAdornment>
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search sx={{ color: 'rgba(240,249,255,0.3)', fontSize: 18 }} />
+                  </InputAdornment>
+                ),
               }}
               sx={{
-                width: { xs: '100%', sm: 300 },
+                width: { xs: '100%', sm: 250 },
                 '& .MuiInputBase-root': { bgcolor: 'rgba(255,255,255,0.03)', color: '#f0f9ff', borderRadius: 2 },
                 '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(14,165,233,0.15)' },
                 '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(14,165,233,0.3)' }
@@ -238,43 +260,44 @@ export default function GlobalInsightsPage() {
             />
           </Box>
 
-          {!perfLoading && perfData.length > 0 && (
+          {/* User Tabs */}
+          {!perfLoading && combinedTabs.length > 0 && (
             <Tabs 
               value={activeTab} 
               onChange={(e, val) => { setActiveTab(val); setPerfPage(0); }} 
               variant="scrollable" 
               scrollButtons="auto"
               sx={{ 
-                mb: 3, 
+                mb: 3,
                 borderBottom: '1px solid rgba(14,165,233,0.1)',
                 '& .MuiTab-root': { color: 'rgba(240,249,255,0.5)', fontWeight: 600, minWidth: 120, textTransform: 'none', fontSize: 13 },
                 '& .Mui-selected': { color: '#0ea5e9 !important' },
                 '& .MuiTabs-indicator': { backgroundColor: '#0ea5e9', height: 3, borderTopLeftRadius: 3, borderTopRightRadius: 3 }
               }}
             >
-              {perfData.map((userObj, idx) => (
+              {combinedTabs.map((userObj, idx) => (
                 <Tab key={userObj.userId || idx} label={userObj.userName} />
               ))}
             </Tabs>
           )}
 
-          {!perfLoading && activeUser && (
-            <Grid container spacing={2} mb={3}>
-              <Grid item xs={6} sm={3}>
-                <StatCard title="Leads Today" value={activeUser.leadsToday || 0} icon={CalendarToday} color="#10b981" loading={false} />
-              </Grid>
-              <Grid item xs={6} sm={3}>
-                <StatCard title="This Week" value={activeUser.leadsThisWeek || 0} icon={DateRange} color="#f59e0b" loading={false} />
-              </Grid>
-              <Grid item xs={6} sm={3}>
-                <StatCard title="This Month" value={activeUser.leadsThisMonth || 0} icon={TrendingUp} color="#8b5cf6" loading={false} />
-              </Grid>
-              <Grid item xs={6} sm={3}>
-                <StatCard title="Total Leads" value={activeUser.totalLeads || 0} icon={PeopleAlt} color="#0ea5e9" loading={false} />
-              </Grid>
+          {/* Per-user Stat Cards */}
+          <Grid container spacing={2} mb={3}>
+            <Grid item xs={6} sm={3}>
+              <StatCard title="Leads Today" value={activeUser?.leadsToday || 0} icon={CalendarToday} color="#10b981" loading={perfLoading} />
             </Grid>
-          )}
+            <Grid item xs={6} sm={3}>
+              <StatCard title="This Week" value={activeUser?.leadsThisWeek || 0} icon={DateRange} color="#f59e0b" loading={perfLoading} />
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <StatCard title="This Month" value={activeUser?.leadsThisMonth || 0} icon={TrendingUp} color="#8b5cf6" loading={perfLoading} />
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <StatCard title="Total Leads" value={activeUser?.totalLeads || 0} icon={PeopleAlt} color="#0ea5e9" loading={perfLoading} />
+            </Grid>
+          </Grid>
 
+          {/* Activity Table */}
           <TableContainer sx={{ maxHeight: 500 }}>
             <Table size="small" stickyHeader>
               <TableHead>
@@ -309,12 +332,12 @@ export default function GlobalInsightsPage() {
                 {perfLoading ? (
                   [...Array(10)].map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={3}><Skeleton sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} /></TableCell>
+                      <TableCell colSpan={4}><Skeleton sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} /></TableCell>
                     </TableRow>
                   ))
                 ) : !activeUser || activeActivity.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={3} sx={{ textAlign: 'center', py: 6, color: 'rgba(240,249,255,0.3)', borderBottom: 'none' }}>
+                    <TableCell colSpan={4} sx={{ textAlign: 'center', py: 6, color: 'rgba(240,249,255,0.3)', borderBottom: 'none' }}>
                       No lead activity available
                     </TableCell>
                   </TableRow>
@@ -368,3 +391,4 @@ export default function GlobalInsightsPage() {
     </Box>
   );
 }
+

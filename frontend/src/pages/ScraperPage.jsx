@@ -96,6 +96,7 @@ export default function ScraperPage() {
     setImporting(true);
     const formData = new FormData();
     formData.append('file', importFile);
+    formData.append('imported_tab', 'Data Staging');
 
     const tid = toast.loading('Uploading and processing dataset...');
     try {
@@ -296,15 +297,7 @@ export default function ScraperPage() {
     }));
 
     const endCols = [
-      {
-        field: 'source', headerName: 'Source', width: 120, renderCell: (p) => (
-          <Tooltip title={p.value || 'Unknown'} placement="top" arrow>
-            <Box sx={{ width: '100%', overflow: 'hidden' }}>
-              <Chip label={p.value || 'Unknown'} size="small" sx={{ bgcolor: 'rgba(14,165,233,0.1)', color: '#38bdf8', maxWidth: '100%', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' } }} />
-            </Box>
-          </Tooltip>
-        )
-      },
+
       {
         field: 'status', headerName: 'Status', width: 120, renderCell: (p) => (
           <Tooltip title={p.value || ''} placement="top" arrow>
@@ -349,7 +342,7 @@ export default function ScraperPage() {
           <Button variant="contained" size="small" startIcon={<PersonAdd />}
             disabled={!selection.length} onClick={handleConvertToLeads}
             sx={{ bgcolor: '#10b981', '&:hover': { bgcolor: '#059669' } }}>
-            Add Selected to CRM ({selection.length})
+            Add Lead ({selection.length})
           </Button>
           {canExport && (
             <Box sx={{ display: 'flex', gap: 1 }}>
@@ -377,18 +370,19 @@ export default function ScraperPage() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', flexDirection: { xs: 'column', sm: 'row' }, gap: { xs: 2, sm: 0 }, mb: 3 }}>
         <Box>
-          <Typography variant="h4" fontWeight={800} color="#f0f9ff" sx={{ fontFamily: 'Georgia, serif' }}>
+          <Typography variant="h4" fontWeight={800} color="#f0f9ff" sx={{ fontFamily: 'Georgia, serif', fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>
             Data Staging & Management
           </Typography>
           <Typography variant="body2" color="rgba(240,249,255,0.35)">
             Review, filter, and normalize your datasets before committing to CRM
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, width: { xs: '100%', sm: 'auto' } }}>
           <Button
             variant="contained"
+            fullWidth
             startIcon={<CloudUpload />}
             onClick={() => setImportOpen(true)}
             sx={{ background: 'linear-gradient(135deg,#0ea5e9,#3b82f6)', fontWeight: 700, px: 3 }}>
@@ -398,14 +392,14 @@ export default function ScraperPage() {
       </Box>
 
       <Card sx={{ borderRadius: 3, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', overflow: 'hidden' }}>
-        <Box sx={{ p: 3, display: 'flex', gap: 2, alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', bgcolor: 'rgba(14,165,233,0.02)' }}>
+        <Box sx={{ p: { xs: 2, sm: 3 }, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2, alignItems: { xs: 'stretch', md: 'center' }, borderBottom: '1px solid rgba(255,255,255,0.05)', bgcolor: 'rgba(14,165,233,0.02)' }}>
           <TextField
             placeholder="Search keyword, email, company or title..."
             size="small"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             sx={{
-              width: 350,
+              width: { xs: '100%', md: 350 },
               '& .MuiInputBase-root': { bgcolor: 'rgba(255,255,255,0.03)', color: '#f0f9ff', borderRadius: 2 },
               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(14,165,233,0.2)' }
             }}
@@ -424,13 +418,18 @@ export default function ScraperPage() {
               )
             }}
           />
-          <Button variant="outlined" startIcon={<FilterList />}
-            onClick={() => setShowFilters(!showFilters)}
-            sx={{ color: showFilters ? '#38bdf8' : 'rgba(240,249,255,0.5)', borderColor: 'rgba(14,165,233,0.3)', bgcolor: showFilters ? 'rgba(14,165,233,0.1)' : 'transparent' }}>
-            Filters
-          </Button>
-          <Box sx={{ flex: 1 }} />
-          <Typography variant="body2" color="rgba(240,249,255,0.3)">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Button variant="outlined" startIcon={<FilterList />}
+              onClick={() => setShowFilters(!showFilters)}
+              sx={{ color: showFilters ? '#38bdf8' : 'rgba(240,249,255,0.5)', borderColor: 'rgba(14,165,233,0.3)', bgcolor: showFilters ? 'rgba(14,165,233,0.1)' : 'transparent' }}>
+              Filters
+            </Button>
+            <Typography variant="body2" color="rgba(240,249,255,0.3)" sx={{ display: { xs: 'block', md: 'none' } }}>
+              {total} records
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+          <Typography variant="body2" color="rgba(240,249,255,0.3)" sx={{ display: { xs: 'none', md: 'block' } }}>
             {total} records
           </Typography>
         </Box>
@@ -522,10 +521,20 @@ export default function ScraperPage() {
                 loading={historyLoading}
                 columns={[
                   { field: 'file_name', headerName: 'File Name', width: 250 },
+                  { field: 'imported_tab', headerName: 'Imported Tab', width: 150, renderCell: (p) => p.value || 'Unknown' },
                   { field: 'uploaded_by_name', headerName: 'Uploaded By', width: 150 },
                   { field: 'total_rows', headerName: 'Total Rows', width: 120 },
                   { field: 'valid_rows', headerName: 'Valid Rows', width: 120 },
-                  { field: 'created_at', headerName: 'Import Date', width: 200, renderCell: (p) => formatDistanceToNow(new Date(p.value), { addSuffix: true }) },
+                  { field: 'created_at', headerName: 'Imported Time', width: 180, renderCell: (p) => {
+                      if (!p.value) return '—';
+                      const d = new Date(p.value);
+                      const pad = (n) => ('0' + n).slice(-2);
+                      const hrs = d.getHours();
+                      const ampm = hrs >= 12 ? 'PM' : 'AM';
+                      const h12 = hrs % 12 || 12;
+                      return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(h12)}:${pad(d.getMinutes())} ${ampm}`;
+                    } 
+                  },
                 ]}
                 sx={{
                   border: 'none',

@@ -7,11 +7,12 @@ import {
 import { AutoAwesome } from '@mui/icons-material';
 import api from '../../utils/api';
 import toast from 'react-hot-toast';
+import { COUNTRIES } from '../../utils/countries';
 
 const EMPTY = {
-  name: '', email: '', phone: '', linkedin: '', company: '', domain: '',
-  website: '', industry: '', country: '', city: '', employee_size: '',
-  revenue: '', company_desc: '', keywords: [], keyword: '', notes: '', source: '', status: 'new',
+  name: '', email: '', phone: '', linkedin: '', company: '', job_title: '',
+  website: '', industry: '', country: '', city: '', client_description: '',
+  keyword: '', source: '', status: 'new', custom_source: '',
 };
 
 const inputSx = {
@@ -20,8 +21,7 @@ const inputSx = {
   '& .MuiInputLabel-root': { color: 'rgba(240,249,255,0.4)', fontSize: 13 },
 };
 
-const EMP_SIZES = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+'];
-const REVENUES = ['<$1M', '$1M-$10M', '$10M-$50M', '$50M-$200M', '$200M+'];
+
 const STATUSES = ['new', 'contacted', 'qualified', 'disqualified', 'converted'];
 
 export default function LeadForm({ open, onClose, onSaved, lead }) {
@@ -37,6 +37,12 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
       if (typeof initial.company === 'object' && initial.company !== null) {
         initial.company = initial.company.company_name || initial.company.company || JSON.stringify(initial.company);
       }
+      
+      const predefinedSources = ['', 'Apify', 'Apollo', 'LinkedIn', 'Manual', 'Import', 'Web Scrape', 'Referral', 'Other'];
+      if (initial.source && !predefinedSources.includes(initial.source)) {
+        initial.custom_source = initial.source;
+        initial.source = 'Other';
+      }
     }
     setForm(initial);
   }, [lead, open]);
@@ -47,13 +53,20 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
     if (!form.company.trim()) return toast.error('Company name is required');
     if (!form.keyword?.trim()) return toast.error('Keyword is required');
     setL(true);
+
+    const payload = { ...form };
+    if (payload.source === 'Other' && payload.custom_source?.trim()) {
+      payload.source = payload.custom_source.trim();
+    }
+    delete payload.custom_source;
+
     try {
       if (isEdit) {
-        const { data } = await api.put(`/leads/${lead.id}`, form);
+        const { data } = await api.put(`/leads/${lead.id}`, payload);
         toast.success('Lead updated');
         onSaved(data.lead);
       } else {
-        const { data } = await api.post('/leads', form);
+        const { data } = await api.post('/leads', payload);
         toast.success('Lead added — enrichment queued');
         onSaved(data.lead);
       }
@@ -110,24 +123,17 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
             </Typography>
           </Grid>
           <Grid item xs={12} sm={6}>{F('company', 'Company *')}</Grid>
-          <Grid item xs={12} sm={6}>{F('domain', 'Domain', { placeholder: 'example.com' })}</Grid>
+          <Grid item xs={12} sm={6}>{F('job_title', 'Job Title', { placeholder: 'e.g. CEO' })}</Grid>
           <Grid item xs={12} sm={6}>{F('website', 'Website URL')}</Grid>
           <Grid item xs={12} sm={6}>{F('industry', 'Industry')}</Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField fullWidth label="Employee Size" select value={form.employee_size || ''}
-              onChange={e => set('employee_size', e.target.value)} size="small" sx={inputSx}>
-              <MenuItem value="">Unknown</MenuItem>
-              {EMP_SIZES.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-            </TextField>
+          <Grid item xs={12} sm={6}>
+            <Autocomplete
+              options={COUNTRIES}
+              value={form.country || ''}
+              onChange={(_, val) => set('country', val || '')}
+              renderInput={(p) => <TextField {...p} label="Country" size="small" sx={inputSx} />}
+            />
           </Grid>
-          <Grid item xs={12} sm={4}>
-            <TextField fullWidth label="Revenue" select value={form.revenue || ''}
-              onChange={e => set('revenue', e.target.value)} size="small" sx={inputSx}>
-              <MenuItem value="">Unknown</MenuItem>
-              {REVENUES.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} sm={4}>{F('country', 'Country')}</Grid>
 
           {/* Contact section */}
           <Grid item xs={12} sx={{ mt: 1 }}>
@@ -152,29 +158,6 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
             {F('keyword', 'Keyword *')}
           </Grid>
           <Grid item xs={12} sm={4}>
-            <Autocomplete multiple freeSolo value={form.keywords || []}
-              onChange={(_, v) => set('keywords', v)} options={[]}
-              renderTags={(val, getP) => val.map((o, i) => (
-                <Chip label={o} size="small" {...getP({ index: i })} key={o}
-                  sx={{
-                    bgcolor: 'rgba(14,165,233,0.15)', color: '#38bdf8',
-                    border: '1px solid rgba(14,165,233,0.3)', fontSize: 11
-                  }} />
-              ))}
-              renderInput={p => (
-                <TextField {...p} label="Keywords" size="small" sx={inputSx}
-                  placeholder="Type + Enter" />
-              )}
-            />
-          </Grid>
-          <Grid item xs={12} sm={3}>
-            <TextField fullWidth label="Source" select value={form.source || ''}
-              onChange={e => set('source', e.target.value)} size="small" sx={inputSx}>
-              {['', 'Apollo', 'LinkedIn', 'Manual', 'Import', 'Web Scrape', 'Referral', 'Other']
-                .map(s => <MenuItem key={s} value={s}>{s || 'Select source'}</MenuItem>)}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} sm={3}>
             <TextField fullWidth label="Status" select value={form.status || 'new'}
               onChange={e => set('status', e.target.value)} size="small" sx={inputSx}>
               {STATUSES.map(s => (
@@ -182,11 +165,20 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12}>
-            {F('company_desc', 'Company Description', { multiline: true, rows: 2 })}
+          <Grid item xs={12} sm={4}>
+            <TextField fullWidth label="Source" select value={form.source || ''}
+              onChange={e => set('source', e.target.value)} size="small" sx={inputSx}>
+              {['', 'Apify', 'Apollo', 'LinkedIn', 'Manual', 'Import', 'Web Scrape', 'Referral', 'Other']
+                .map(s => <MenuItem key={s} value={s}>{s || 'Select source'}</MenuItem>)}
+            </TextField>
+            {form.source === 'Other' && (
+              <Box mt={1}>
+                {F('custom_source', 'Enter custom source')}
+              </Box>
+            )}
           </Grid>
           <Grid item xs={12}>
-            {F('notes', 'Notes', { multiline: true, rows: 2 })}
+            {F('client_description', 'Client Description', { multiline: true, rows: 2 })}
           </Grid>
         </Grid>
       </DialogContent>

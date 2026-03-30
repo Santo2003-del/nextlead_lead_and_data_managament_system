@@ -16,7 +16,7 @@ const leadSchema = new mongoose.Schema({
     city: { type: String },
     employee_size: { type: String },
     revenue: { type: String },
-    company_desc: { type: String },
+    client_description: { type: String },
 
     keywords: { type: [String], default: [] },
     keyword: { type: String }, // Source keyword
@@ -60,7 +60,7 @@ leadSchema.index({
     industry: 'text',
     keywords: 'text',
     notes: 'text',
-    company_desc: 'text'
+    client_description: 'text'
 }, {
     weights: {
         company: 10,
@@ -70,7 +70,7 @@ leadSchema.index({
         industry: 5,
         keywords: 10,
         notes: 2,
-        company_desc: 2
+        client_description: 2
     }
 });
 

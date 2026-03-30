@@ -391,6 +391,7 @@ const processImport = async (req, res) => {
        size: req.file.size,
        uploaded_by: req.user.id,
        source: req.body.source || 'Unknown',
+       imported_tab: req.body.imported_tab || 'Unknown',
        total_rows: records.length,
        valid_rows: actualInserted
     });
