@@ -28,8 +28,13 @@ const scrapeJobSchema = new mongoose.Schema({
     }
 });
 
+// ── Single-field indexes ──────────────────────────────────────
 scrapeJobSchema.index({ status: 1 });
 scrapeJobSchema.index({ created_by: 1 });
 scrapeJobSchema.index({ created_at: -1 });
+
+// ── Compound indexes for common query patterns ────────────────
+scrapeJobSchema.index({ created_by: 1, created_at: -1 });  // User's jobs sorted by date
+scrapeJobSchema.index({ status: 1, created_at: -1 });      // Status-filtered date listing
 
 module.exports = mongoose.model('ScrapeJob', scrapeJobSchema);

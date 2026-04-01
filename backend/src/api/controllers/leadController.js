@@ -194,13 +194,9 @@ const processImport = async (req, res) => {
       return res.status(400).json({ error: 'Suspicious content or macro injection detected in file.' });
     }
 
-    // 1. Prevent duplicate file uploads using a SHA-256 hash
+    // 1. Calculate file hash for tracking
     const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-    const existingImport = await ImportHistory.findOne({ file_hash: fileHash });
-    if (existingImport) {
-      return res.status(409).json({ error: 'Duplicate file upload detected. This exact file was already imported.' });
-    }
-
+    
     let records = [];
 
     if (ext === 'csv') {
@@ -227,7 +223,7 @@ const processImport = async (req, res) => {
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
           const header = headers[colNumber - 1];
           if (!header) return;
-          
+
           let val = cell.value;
           // Fix for React crash: extract result from formula objects
           if (val && typeof val === 'object') {
@@ -253,10 +249,10 @@ const processImport = async (req, res) => {
     const REQUIRED_COLUMN_CHECKS = [
       { name: 'Keyword', aliases: ['keyword'] },
       { name: 'First Name', aliases: ['firstname', 'first_name'] },
-      { name: 'Last Name', aliases: ['lastname', 'last_name'] },
       { name: 'Email', aliases: ['email'] },
-      { name: 'Company Name OR Company Website', aliases: ['company', 'companyname', 'company_name', 'domain', 'website', 'company_website'] },
+      { name: 'Company Name', aliases: ['company', 'companyname', 'company_name', 'domain', 'website', 'company_website', 'organization'] },
       { name: 'Job Title', aliases: ['jobtitle', 'job_title'] },
+      { name: 'Country', aliases: ['country', 'location', 'region'] },
     ];
 
     const missingColumns = [];
@@ -289,7 +285,7 @@ const processImport = async (req, res) => {
           upsert: true
         }
       }));
-      await Keyword.bulkWrite(kwOps, { ordered: false }).catch(() => {});
+      await Keyword.bulkWrite(kwOps, { ordered: false }).catch(() => { });
     }
 
     const kwDocs = await Keyword.find({ name: { $in: uniqueKeywords } }).lean();
@@ -303,9 +299,9 @@ const processImport = async (req, res) => {
       // Phase 1 + 3: Normalize ALL headers and store full row in rawData
       const rawData = {};
       Object.keys(r).forEach(k => {
-          if (!k) return;
-          const normKey = String(k).trim().toLowerCase().replace(/[\s\.-]+/g, '_');
-          rawData[normKey] = r[k];
+        if (!k) return;
+        const normKey = String(k).trim().toLowerCase().replace(/[\s\.-]+/g, '_');
+        rawData[normKey] = r[k];
       });
 
       // Phase 2: Required Field Mapping
@@ -316,14 +312,14 @@ const processImport = async (req, res) => {
       const fullName = rawData.full_name || rawData.fullname || rawData.name || '';
 
       if (!fName && !lName && fullName) {
-          const parts = String(fullName).trim().split(/\s+/);
-          fName = parts[0] || '';
-          lName = parts.slice(1).join(' ') || '';
+        const parts = String(fullName).trim().split(/\s+/);
+        fName = parts[0] || '';
+        lName = parts.slice(1).join(' ') || '';
       }
 
       // Phase 10: Import Validation — strict rejection row by row
       if (!keyword || !email || !fName) {
-         continue; 
+        continue;
       }
 
       let companyName = rawData.company_name || rawData.company || '';
@@ -333,6 +329,8 @@ const processImport = async (req, res) => {
       const companyPhone = rawData.company_phone || rawData.phone || rawData.contact_number || '';
       const jobTitle = rawData.job_title || rawData.jobtitle || rawData.title || '';
       const country = rawData.country || '';
+      const linkedin = rawData.linkedin || rawData.linkedin_url || '';
+      const industry = rawData.industry || '';
 
       // Phase 9: No data loss - full rawData pushed to DB
       const mapped = {
@@ -346,6 +344,9 @@ const processImport = async (req, res) => {
         keyword: keyword,
         keywordId: keywordMap[keyword] || null,
         contact_number: companyPhone, // fallback matching DB structure
+        linkedin: linkedin,
+        industry: industry,
+        company_website: domain,
         source_file: req.file.originalname,
         source: rawData.source || 'Imported',
         importedAt: new Date(),
@@ -366,34 +367,34 @@ const processImport = async (req, res) => {
 
     let actualInserted = 0;
     try {
-        // Phase 11: Performance - Use bulkWrite
-        const bulkOps = docs.map(doc => ({
-            insertOne: { document: doc }
-        }));
-        const result = await ScrapedData.bulkWrite(bulkOps, { ordered: false });
-        actualInserted = result.insertedCount;
+      // Phase 11: Performance - Use bulkWrite
+      const bulkOps = docs.map(doc => ({
+        insertOne: { document: doc }
+      }));
+      const result = await ScrapedData.bulkWrite(bulkOps, { ordered: false });
+      actualInserted = result.insertedCount;
     } catch (err) {
-        if (err.name !== 'MongoBulkWriteError' && err.code !== 11000) {
-            throw err;
-        }
-        actualInserted = err.insertedCount || (err.result && err.result.nInserted ? err.result.nInserted : 0);
-        logger.info(`Import partial success: some duplicates skipped in file ${req.file.originalname}. Inserted: ${actualInserted}`);
+      if (err.name !== 'MongoBulkWriteError' && err.code !== 11000) {
+        throw err;
+      }
+      actualInserted = err.insertedCount || (err.result && err.result.nInserted ? err.result.nInserted : 0);
+      logger.info(`Import partial success: some duplicates skipped in file ${req.file.originalname}. Inserted: ${actualInserted}`);
     }
 
     if (actualInserted === 0) {
-       return res.status(409).json({ error: 'Upload rejected: This exact dataset (or all its keywords + emails) already exists perfectly in the system. No new data found.' });
+      return res.status(409).json({ error: 'Upload rejected: This exact dataset (or all its keywords + emails) already exists perfectly in the system. No new data found.' });
     }
 
     // 3. Store Import Status tracking success
     await ImportHistory.create({
-       file_name: req.file.originalname,
-       file_hash: fileHash,
-       size: req.file.size,
-       uploaded_by: req.user.id,
-       source: req.body.source || 'Unknown',
-       imported_tab: req.body.imported_tab || 'Unknown',
-       total_rows: records.length,
-       valid_rows: actualInserted
+      file_name: req.file.originalname,
+      file_hash: fileHash,
+      size: req.file.size,
+      uploaded_by: req.user.id,
+      source: req.body.source || 'Unknown',
+      imported_tab: req.body.imported_tab || 'Unknown',
+      total_rows: records.length,
+      valid_rows: actualInserted
     });
 
     await log({

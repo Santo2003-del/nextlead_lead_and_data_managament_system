@@ -30,8 +30,14 @@ const exportSchema = new mongoose.Schema({
     }
 });
 
+// ── Single-field indexes ──────────────────────────────────────
 exportSchema.index({ created_by: 1 });
 exportSchema.index({ status: 1 });
 exportSchema.index({ created_at: -1 });
+exportSchema.index({ expires_at: 1 });              // Expired export cleanup queries
+
+// ── Compound indexes for common query patterns ────────────────
+exportSchema.index({ created_by: 1, created_at: -1 });  // User's exports sorted by date
+exportSchema.index({ status: 1, created_at: -1 });      // Status-filtered date listing
 
 module.exports = mongoose.model('Export', exportSchema);

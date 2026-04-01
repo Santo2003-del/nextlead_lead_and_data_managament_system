@@ -109,6 +109,15 @@ const createLead = async (data, userId) => {
   if (!email || !email.trim()) {
     throw Object.assign(new Error('Email is required. Cannot save lead without an email.'), { status: 400 });
   }
+  if (!first_name || !first_name.trim()) {
+    throw Object.assign(new Error('First Name is required. Cannot save lead without a first name.'), { status: 400 });
+  }
+  if (!job_title || !job_title.trim()) {
+    throw Object.assign(new Error('Job Title is required. Cannot save lead without a job title.'), { status: 400 });
+  }
+  if (!country || !country.trim()) {
+    throw Object.assign(new Error('Country is required. Cannot save lead without a country.'), { status: 400 });
+  }
 
   const user = await User.findById(userId);
   const createdByName = user?.name || 'System';
@@ -306,7 +315,7 @@ const bulkCreate = async (records, userId) => {
 
 // ── Update lead ───────────────────────────────────────────────
 const updateLead = async (id, data) => {
-  const FIELDS = ['name', 'email', 'phone', 'linkedin', 'company', 'domain', 'website',
+  const FIELDS = ['first_name', 'last_name', 'job_title', 'keyword', 'name', 'email', 'phone', 'linkedin', 'company', 'domain', 'website',
     'industry', 'country', 'city', 'employee_size', 'revenue', 'client_description',
     'keywords', 'notes', 'source', 'status', 'lead_score'];
   const updateData = {};

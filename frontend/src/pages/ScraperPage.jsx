@@ -15,13 +15,14 @@ import { formatDistanceToNow } from 'date-fns';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import * as XLSX from 'xlsx';
 
 const STAGING_STATUS_COLOR = {
   raw: '#38bdf8', converted: '#10b981', exported: '#f59e0b'
 };
 
 const availableExportCols = [
-  'keyword', 'first_name', 'last_name', 'email', 'company_name', 'job_title', 'country'
+  'created_at', 'uploadedByName', 'keyword', 'first_name', 'last_name', 'email', 'job_title', 'country', 'company_name', 'linkedin', 'industry', 'source', 'status'
 ];
 
 export default function ScraperPage() {
@@ -86,6 +87,15 @@ export default function ScraperPage() {
   useEffect(() => { loadData(); }, [page, pageSize, search, filters]);
   useEffect(() => { loadHistory(); }, []);
 
+  const IMPORT_REQUIRED_COLS = [
+    { name: 'keyword', aliases: ['keyword'] },
+    { name: 'first_name', aliases: ['firstname', 'first_name'] },
+    { name: 'email', aliases: ['email'] },
+    { name: 'company_name', aliases: ['company', 'companyname', 'company_name', 'domain', 'website', 'company_website', 'organization'] },
+    { name: 'job_title', aliases: ['job_title', 'jobtitle'] },
+    { name: 'country', aliases: ['country', 'location', 'region'] },
+  ];
+
   const handleImportSubmit = async () => {
     if (!importFile) return toast.error('Please select a file');
     const ext = importFile.name.split('.').pop().toLowerCase();
@@ -94,12 +104,38 @@ export default function ScraperPage() {
     }
 
     setImporting(true);
-    const formData = new FormData();
-    formData.append('file', importFile);
-    formData.append('imported_tab', 'Data Staging');
-
     const tid = toast.loading('Uploading and processing dataset...');
     try {
+      let fileHeaders = [];
+      if (ext === 'csv') {
+        const text = await importFile.text();
+        const firstLine = text.split(/\r?\n/)[0];
+        fileHeaders = firstLine.split(',').map(h => h.trim().replace(/["']/g, '').toLowerCase().replace(/[\s_]/g, ''));
+      } else if (ext === 'xlsx') {
+        const buf = await importFile.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', sheetRows: 1 });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (rows.length > 0) fileHeaders = rows[0].map(h => String(h).toLowerCase().replace(/[\s_]/g, ''));
+      }
+
+      if (fileHeaders.length > 0) {
+        const missing = [];
+        for (const check of IMPORT_REQUIRED_COLS) {
+          const norm = check.aliases.map(a => a.replace(/[\s_]/g, ''));
+          if (!norm.some(a => fileHeaders.includes(a))) missing.push(check.name);
+        }
+        if (missing.length > 0) {
+          toast.error(`Required columns missing: ${missing.join(', ')}`, { id: tid });
+          setImporting(false);
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('file', importFile);
+      formData.append('imported_tab', 'Data Staging');
+
       await api.post('/leads/import', formData);
       toast.success('Dataset imported successfully into Staging!', { id: tid });
       loadData();
@@ -459,12 +495,22 @@ export default function ScraperPage() {
               </Grid>
               <Grid item xs={12} sm={6} md={2.4}>
                 <TextField fullWidth size="small" placeholder="Email Domain (e.g. gmail.com)"
-                  value={filters.email_domain} onChange={e => setFilters({ ...filters, email_domain: e.target.value })}
+                  value={filters.email_domain || ''} onChange={e => setFilters({ ...filters, email_domain: e.target.value })}
                   sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" type="date" InputLabelProps={{ shrink: true }} label="Start Date"
+                  value={filters.date_from || ''} onChange={e => setFilters({ ...filters, date_from: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' }, '& .MuiInputLabel-root': { color: 'rgba(240,249,255,0.5)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" type="date" InputLabelProps={{ shrink: true }} label="End Date"
+                  value={filters.date_to || ''} onChange={e => setFilters({ ...filters, date_to: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' }, '& .MuiInputLabel-root': { color: 'rgba(240,249,255,0.5)' } }} />
               </Grid>
             </Grid>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
-              <Button size="small" onClick={() => setFilters({ keyword: '', job_title: '', company_name: '', country: '', email_domain: '' })}
+              <Button size="small" onClick={() => setFilters({ keyword: '', job_title: '', company_name: '', country: '', email_domain: '', date_from: '', date_to: '' })}
                 sx={{ color: 'rgba(240,249,255,0.4)' }}>Clear Filters</Button>
             </Box>
           </Box>
@@ -596,10 +642,22 @@ export default function ScraperPage() {
       </Dialog>
 
       {/* Import Dialog */}
-      <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="xs" fullWidth
+      <Dialog open={importOpen} onClose={() => setImportOpen(false)} maxWidth="sm" fullWidth
         PaperProps={{ sx: { borderRadius: 3, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.2)' } }}>
-        <DialogTitle sx={{ color: '#f0f9ff', fontWeight: 700 }}>Import Dataset</DialogTitle>
+        <DialogTitle sx={{ color: '#f0f9ff', fontWeight: 700 }}>Import Data</DialogTitle>
         <DialogContent>
+          <Typography variant="body2" color="rgba(240,249,255,0.5)" mb={1}>
+            Upload a CSV or Excel file. Required columns: <strong style={{color:'#38bdf8'}}>keyword, first_name, email, company_name, job_title, country</strong>.
+            Extra columns are accepted and stored as metadata.
+          </Typography>
+          <Box mb={2}>
+            <Button component="a" href="/assets/Data Upload Format.xlsx" download sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, color: '#10b981', bgcolor: 'rgba(16,185,129,0.1)', '&:hover': { bgcolor: 'rgba(16,185,129,0.2)' }, px: 2, py: 0.5, borderRadius: 1.5, textTransform: 'none' }}>
+              <FilePresent fontSize="small" /> Download Required Upload Format
+            </Button>
+            <Typography variant="caption" display="block" color="rgba(240,249,255,0.4)" mt={0.5}>
+              Please upload file only in the provided template format
+            </Typography>
+          </Box>
           <Button variant="outlined" component="label" fullWidth sx={{ color: '#38bdf8', borderColor: 'rgba(14,165,233,0.3)', mt: 2 }}>
             {importFile ? importFile.name : 'Select File (CSV/XLSX)'}
             <input type="file" hidden accept=".csv,.xlsx" onChange={e => setImportFile(e.target.files?.[0])} />

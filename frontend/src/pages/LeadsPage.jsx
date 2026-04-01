@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 import {
   Add, FileDownload, FileUpload, Edit, Delete, AutoAwesome,
-  LinkedIn, OpenInNew, MoreVert, SelectAll, Search, FilterList, Refresh
+  LinkedIn, OpenInNew, MoreVert, SelectAll, Search, FilterList, Refresh, FilePresent
 } from '@mui/icons-material';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -47,8 +47,7 @@ const StatusChip = ({ status }) => {
 };
 
 const availableExportCols = [
-  'id', 'first_name', 'last_name', 'phone', 'email', 'job_title', 'company', 'client_description', 'industry', 'country',
-  'keyword', 'status', 'source', 'linkedin', 'created_at'
+  'created_at', 'added_by_name', 'keyword', 'first_name', 'last_name', 'email', 'job_title', 'country', 'company', 'linkedin', 'industry', 'source', 'status'
 ];
 
 export default function LeadsPage() {
@@ -131,10 +130,10 @@ export default function LeadsPage() {
   const IMPORT_REQUIRED_COLS = [
     { name: 'keyword', aliases: ['keyword'] },
     { name: 'first_name', aliases: ['firstname', 'first_name'] },
-    { name: 'last_name', aliases: ['lastname', 'last_name'] },
     { name: 'email', aliases: ['email'] },
-    { name: 'company_name or company_website', aliases: ['company', 'companyname', 'company_name', 'domain', 'website', 'company_website'] },
+    { name: 'company_name', aliases: ['company', 'companyname', 'company_name', 'domain', 'website', 'company_website', 'organization'] },
     { name: 'job_title', aliases: ['job_title', 'jobtitle'] },
+    { name: 'country', aliases: ['country', 'location', 'region'] },
   ];
 
   const handleImport = async () => {
@@ -312,6 +311,16 @@ export default function LeadsPage() {
                   value={filters.source || ''} onChange={e => setFilters({ ...filters, source: e.target.value })}
                   sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' } }} />
               </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" type="date" InputLabelProps={{ shrink: true }} label="Start Date"
+                  value={filters.date_from || ''} onChange={e => setFilters({ ...filters, date_from: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' }, '& .MuiInputLabel-root': { color: 'rgba(240,249,255,0.5)' } }} />
+              </Grid>
+              <Grid item xs={12} sm={6} md={2.4}>
+                <TextField fullWidth size="small" type="date" InputLabelProps={{ shrink: true }} label="End Date"
+                  value={filters.date_to || ''} onChange={e => setFilters({ ...filters, date_to: e.target.value })}
+                  sx={{ '& .MuiInputBase-root': { color: '#f0f9ff', fontSize: 13 }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.1)' }, '& .MuiInputLabel-root': { color: 'rgba(240,249,255,0.5)' } }} />
+              </Grid>
             </Grid>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2, gap: 1 }}>
               <Button size="small" onClick={() => { setFilters({}); setSearch(''); setPage(0); }}
@@ -333,7 +342,7 @@ export default function LeadsPage() {
                   <Checkbox size="small" checked={allSelected} onChange={toggleAll}
                     sx={{ color: 'rgba(255,255,255,0.2)', '&.Mui-checked': { color: '#0ea5e9' } }} />
                 </TableCell>
-                {['Added Date', 'Added By', 'Keyword / Owner', 'Contact Number', 'Email', 'Company Name', 'Client Description', 'Country', 'Source', 'Status'].map(h => (
+                {['Imported Date', 'Imported By', 'Keyword', 'First Name', 'Last Name', 'Email', 'Job Title', 'Country', 'Company Name', 'LinkedIn', 'Industry', 'Source', 'Status'].map(h => (
                   <TableCell key={h} sx={headSx}>{h}</TableCell>
                 ))}
                 {canEditDelete && <TableCell sx={{ ...headSx, maxWidth: 80 }}>Actions</TableCell>}
@@ -374,32 +383,27 @@ export default function LeadsPage() {
                     </Typography>
                   </TableCell>
 
-                  {/* ── Keyword / Owner — 3 lines ────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 220, whiteSpace: 'normal', minWidth: 180 }}>
-                    <Tooltip title={`Keyword: ${row.keyword || '—'}\nImported By: ${row.keywordCreatedByName || '—'}\nAdded By: ${row.createdByName || '—'}`} placement="top" arrow>
-                      <Box>
-                        {row.keyword ? (
-                          <Chip label={row.keyword} size="small" sx={{
-                            bgcolor: 'rgba(14,165,233,0.1)', color: '#38bdf8', height: 20, fontSize: 10, fontWeight: 700,
-                            maxWidth: 180, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' }
-                          }} />
-                        ) : (
-                          <Typography variant="caption" color="rgba(255,255,255,0.2)">—</Typography>
-                        )}
-                        <Typography variant="caption" display="block" color="rgba(240,249,255,0.45)" mt={0.3} sx={{ fontSize: 10, lineHeight: 1.3 }}>
-                          Imported By: <Box component="span" color="#7dd3fc">{row.keywordCreatedByName || '—'}</Box>
-                        </Typography>
-                        <Typography variant="caption" display="block" color="rgba(240,249,255,0.45)" sx={{ fontSize: 10, lineHeight: 1.3 }}>
-                          Added By: <Box component="span" color="#7dd3fc">{row.createdByName || '—'}</Box>
-                        </Typography>
-                      </Box>
+                  {/* ── Keyword ────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
+                    <Tooltip title={row.keyword || '—'} placement="top" arrow>
+                      <Chip label={row.keyword || '—'} size="small" sx={{
+                        bgcolor: 'rgba(14,165,233,0.1)', color: '#38bdf8', height: 20, fontSize: 10, fontWeight: 700,
+                        maxWidth: 160, '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' }
+                      }} />
                     </Tooltip>
                   </TableCell>
 
-                  {/* ── Contact Number ────────────────────────────────── */}
+                  {/* ── First Name ────────────────────────────────── */}
                   <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
-                    <Tooltip title={row.phone || '—'} placement="top" arrow>
-                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.phone || '—'}</Typography>
+                    <Tooltip title={row.first_name || '—'} placement="top" arrow>
+                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.first_name || '—'}</Typography>
+                    </Tooltip>
+                  </TableCell>
+
+                  {/* ── Last Name ────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
+                    <Tooltip title={row.last_name || '—'} placement="top" arrow>
+                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.last_name || '—'}</Typography>
                     </Tooltip>
                   </TableCell>
 
@@ -407,6 +411,20 @@ export default function LeadsPage() {
                   <TableCell sx={{ ...cellSx, maxWidth: 220 }}>
                     <Tooltip title={row.email || '—'} placement="top" arrow>
                       <Typography variant="body2" color="#38bdf8" noWrap>{row.email || '—'}</Typography>
+                    </Tooltip>
+                  </TableCell>
+
+                  {/* ── Job Title ────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
+                    <Tooltip title={row.job_title || '—'} placement="top" arrow>
+                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.job_title || '—'}</Typography>
+                    </Tooltip>
+                  </TableCell>
+
+                  {/* ── Country ─────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 120 }}>
+                    <Tooltip title={row.country || '—'} placement="top" arrow>
+                      <Typography variant="body2" noWrap>{row.country || '—'}</Typography>
                     </Tooltip>
                   </TableCell>
 
@@ -419,32 +437,27 @@ export default function LeadsPage() {
                             ? (row.company.company_name || row.company.company || JSON.stringify(row.company))
                             : row.company || '—'}
                         </Typography>
-                        {row.domain && (
-                          <Box component="a" href={row.domain.startsWith('http') ? row.domain : `https://${row.domain}`} target="_blank" rel="noopener"
-                            sx={{
-                              display: 'flex', alignItems: 'center', gap: 0.3, color: '#0ea5e9',
-                              fontSize: 10, textDecoration: 'none', '&:hover': { textDecoration: 'underline' }
-                            }}>
-                            {row.domain} <OpenInNew sx={{ fontSize: 9 }} />
-                          </Box>
-                        )}
                       </Box>
                     </Tooltip>
                   </TableCell>
 
-                  {/* ── Client Description ─────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 200 }}>
-                    <Tooltip title={row.client_description || 'No description available'} placement="top" arrow>
-                      <Typography variant="body2" color="rgba(240,249,255,0.6)" noWrap>
-                        {row.client_description || '—'}
-                      </Typography>
+                  {/* ── LinkedIn ────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
+                    <Tooltip title={row.linkedin || '—'} placement="top" arrow>
+                      {row.linkedin ? (
+                        <Box component="a" href={row.linkedin} target="_blank" rel="noopener" sx={{ color: '#0ea5e9', fontSize: 13, textDecoration: 'none' }}>
+                          View <OpenInNew sx={{ fontSize: 10 }} />
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="#e2f4ff" noWrap>—</Typography>
+                      )}
                     </Tooltip>
                   </TableCell>
 
-                  {/* ── Country ─────────────────────────────────── */}
-                  <TableCell sx={{ ...cellSx, maxWidth: 120 }}>
-                    <Tooltip title={row.country || '—'} placement="top" arrow>
-                      <Typography variant="body2" noWrap>{row.country || '—'}</Typography>
+                  {/* ── Industry ────────────────────────────────── */}
+                  <TableCell sx={{ ...cellSx, maxWidth: 160 }}>
+                    <Tooltip title={row.industry || '—'} placement="top" arrow>
+                      <Typography variant="body2" color="#e2f4ff" noWrap>{row.industry || '—'}</Typography>
                     </Tooltip>
                   </TableCell>
 
@@ -573,9 +586,17 @@ export default function LeadsPage() {
         <DialogTitle sx={{ color: '#f0f9ff', fontWeight: 700 }}>Import Data</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="rgba(240,249,255,0.5)" mb={1}>
-            Upload a CSV or Excel file. Required columns: <strong style={{color:'#38bdf8'}}>keyword, first_name, last_name, email, company_name, job_title</strong>.
+            Upload a CSV or Excel file. Required columns: <strong style={{color:'#38bdf8'}}>keyword, first_name, email, company_name, job_title, country</strong>.
             Extra columns are accepted and stored as metadata.
           </Typography>
+          <Box mb={2}>
+            <Button component="a" href="/assets/Data Upload Format.xlsx" download sx={{ display: 'inline-flex', alignItems: 'center', gap: 1, color: '#10b981', bgcolor: 'rgba(16,185,129,0.1)', '&:hover': { bgcolor: 'rgba(16,185,129,0.2)' }, px: 2, py: 0.5, borderRadius: 1.5, textTransform: 'none' }}>
+              <FilePresent fontSize="small" /> Download Required Upload Format
+            </Button>
+            <Typography variant="caption" display="block" color="rgba(240,249,255,0.4)" mt={0.5}>
+              Please upload file only in the provided template format
+            </Typography>
+          </Box>
           {impError && (
             <Alert severity="error" sx={{ mb: 2, bgcolor: 'rgba(239,68,68,0.08)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.2)',
               '& .MuiAlert-icon': { color: '#ef4444' } }}>

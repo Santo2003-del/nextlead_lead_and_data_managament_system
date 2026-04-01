@@ -60,6 +60,13 @@ const buildScrapedFilterClause = (filters) => {
             query.$or = searchOr;
         }
     }
+
+    if (filters.date_from || filters.date_to) {
+        query.created_at = {};
+        if (filters.date_from) query.created_at.$gte = new Date(filters.date_from);
+        if (filters.date_to) query.created_at.$lte = new Date(filters.date_to);
+    }
+    
     return query;
 };
 
@@ -178,13 +185,19 @@ const streamExport = async ({ filters, format, res }) => {
     const cursor = ScrapedData.find(query).cursor();
 
     const defaultCols = [
+        { header: 'IMPORTED DATE', key: 'created_at', width: 20 },
+        { header: 'IMPORTED BY', key: 'uploadedByName', width: 20 },
         { header: 'Keyword', key: 'keyword', width: 20 },
         { header: 'First Name', key: 'first_name', width: 20 },
         { header: 'Last Name', key: 'last_name', width: 20 },
         { header: 'Email', key: 'email', width: 30 },
-        { header: 'Company', key: 'company_name', width: 25 },
         { header: 'Job Title', key: 'job_title', width: 25 },
-        { header: 'Country', key: 'country', width: 15 }
+        { header: 'Country', key: 'country', width: 15 },
+        { header: 'Company', key: 'company_name', width: 25 },
+        { header: 'LinkedIn', key: 'linkedin', width: 30 },
+        { header: 'Industry', key: 'industry', width: 20 },
+        { header: 'Source', key: 'source', width: 15 },
+        { header: 'Status', key: 'status', width: 15 }
     ];
     let activeCols = defaultCols;
     if (filters.selected_columns && filters.selected_columns.length) {

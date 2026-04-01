@@ -1,3 +1,19 @@
+/**
+ * ── Analytics Controller ───────────────────────────────────────
+ * 
+ * Provides analytics endpoints for the NexLead platform:
+ *   - Global insights (total leads, trends, top keywords/users)
+ *   - Keyword Intelligence (keyword dashboard, drill-down, export)
+ *   - Performance table (per-user lead counts)
+ *   - Dashboard analytics (daily lead/import trends)
+ * 
+ * Performance considerations:
+ *   - All aggregation pipelines use maxTimeMS to prevent long-running queries
+ *   - allowDiskUse enabled for pipelines that may exceed 100MB memory limit
+ *   - rawActivity push removed from performanceTable to prevent OOM
+ *   - Keyword export uses streaming for large datasets
+ */
+
 const mongoose = require('mongoose');
 const Lead = require('../../models/Lead');
 const User = require('../../models/User');
@@ -203,16 +219,26 @@ const keywordExport = async (req, res) => {
       .lean();
 
     const data = records.map(r => ({
+      created_at: r.created_at || '',
+      uploadedByName: r.uploadedByName || '',
+      keyword: r.keyword || '',
       first_name: r.first_name || '',
       last_name: r.last_name || '',
       email: r.email || '',
-      company: r.company_name || r.metadata?.company || '',
       job_title: r.job_title || '',
       country: r.country || '',
-      keyword: r.keyword || ''
+      company_name: r.company_name || r.metadata?.company || '',
+      linkedin: r.linkedin || '',
+      industry: r.industry || '',
+      source: r.source || '',
+      status: r.status || ''
     }));
 
-    const cols = ['first_name', 'last_name', 'email', 'company', 'job_title', 'country', 'keyword'];
+    const cols = ['created_at', 'uploadedByName', 'keyword', 'first_name', 'last_name', 'email', 'job_title', 'country', 'company_name', 'linkedin', 'industry', 'source', 'status'];
+    const HEADER_MAP = {
+      'created_at': 'IMPORTED DATE',
+      'uploadedByName': 'IMPORTED BY'
+    };
     const exportId = `kw_${Date.now()}`;
     const outPath = path.join(EXPORT_DIR, `${exportId}.${format === 'xlsx' ? 'xlsx' : 'csv'}`);
 
@@ -220,8 +246,8 @@ const keywordExport = async (req, res) => {
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet(`Keyword: ${keyword}`);
       ws.columns = cols.map(k => ({
-        header: k.replace(/_/g, ' ').toUpperCase(), key: k,
-        width: k === 'id' ? 25 : k === 'email' ? 30 : 18
+        header: HEADER_MAP[k] || k.replace(/_/g, ' ').toUpperCase(), key: k,
+        width: k === 'id' ? 25 : k === 'email' || k === 'linkedin' ? 30 : 18
       }));
       ws.getRow(1).eachCell(cell => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -238,11 +264,11 @@ const keywordExport = async (req, res) => {
     } else {
       await new Promise((resolve, reject) => {
         const ws = fs.createWriteStream(outPath);
-        const stream = csvFormat({ headers: cols.map(k => k.replace(/_/g, ' ').toUpperCase()) });
+        const stream = csvFormat({ headers: cols.map(k => HEADER_MAP[k] || k.replace(/_/g, ' ').toUpperCase()) });
         stream.pipe(ws);
         data.forEach(l => {
           const row = {};
-          cols.forEach(c => { row[c.replace(/_/g, ' ').toUpperCase()] = l[c]; });
+          cols.forEach(c => { row[HEADER_MAP[c] || c.replace(/_/g, ' ').toUpperCase()] = l[c]; });
           stream.write(row);
         });
         stream.end();
@@ -285,26 +311,12 @@ const performanceTable = async (req, res) => {
 
     // Role-based visibility (REMOVED: Now system-wide visibility for all users)
 
+    // ── OPTIMIZED: Removed rawActivity $push ──────────────────
+    // Previous version pushed ALL lead data into an array per user.
+    // With millions of leads, this caused Out-Of-Memory crashes.
+    // Now only aggregates counts — activity details fetched separately.
     const pipeline = [
       { $match: matchStage },
-      {
-        $lookup: {
-          from: "keywords",
-          localField: "keywordId",
-          foreignField: "_id",
-          as: "keywordData"
-        }
-      },
-      { $unwind: { path: "$keywordData", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "users",
-          localField: "keywordData.createdBy",
-          foreignField: "_id",
-          as: "importedUser"
-        }
-      },
-      { $unwind: { path: "$importedUser", preserveNullAndEmptyArrays: true } },
       {
         $group: {
           _id: { $ifNull: ['$createdBy', '$added_by'] },
@@ -317,24 +329,6 @@ const performanceTable = async (req, res) => {
           },
           leadsThisMonth: {
             $sum: { $cond: [{ $gte: [{ $ifNull: ['$createdAt', '$created_at'] }, startOfMonth] }, 1, 0] }
-          },
-          rawActivity: {
-            $push: {
-              date: { $ifNull: ['$createdAt', '$created_at'] },
-              keyword: { 
-                $ifNull: [
-                  '$keywordData.name', 
-                  { $ifNull: ['$keyword', { $ifNull: [{ $arrayElemAt: ['$keywords', 0] }, 'N/A'] }] }
-                ] 
-              },
-              source: { $ifNull: ['$source', 'Imported'] },
-              importedBy: { 
-                $ifNull: [
-                  '$importedUser.name', 
-                  { $ifNull: ['$keywordCreatedByName', { $ifNull: ['$createdByName', 'N/A'] }] }
-                ] 
-              }
-            }
           }
         }
       },
@@ -355,13 +349,14 @@ const performanceTable = async (req, res) => {
           totalLeads: 1,
           leadsToday: 1,
           leadsThisWeek: 1,
-          leadsThisMonth: 1,
-          rawActivity: 1
+          leadsThisMonth: 1
         }
       }
     ];
 
-    const aggregatedData = await Lead.aggregate(pipeline);
+
+    // Use allowDiskUse for large aggregations and maxTimeMS to prevent hanging
+    const aggregatedData = await Lead.aggregate(pipeline).allowDiskUse(true).option({ maxTimeMS: 30000 });
 
     // Fetch all relevant active users for system-wide performance table
     const activeUsers = await User.find({ is_active: true }).select('name _id').lean();
@@ -386,8 +381,7 @@ const performanceTable = async (req, res) => {
         totalLeads: 0,
         leadsToday: 0,
         leadsThisWeek: 0,
-        leadsThisMonth: 0,
-        rawActivity: []
+        leadsThisMonth: 0
       };
     });
 
@@ -491,4 +485,33 @@ const dashboardAnalytics = async (req, res) => {
   }
 };
 
-module.exports = { globalInsights, keywordDashboard, keywordLeads, keywordExport, performanceTable, dashboardAnalytics };
+// ── DELETE /api/analytics/keywords/:keyword ───────────────────
+// Admin / Manager only — delete all leads for a keyword
+const deleteKeyword = async (req, res) => {
+  try {
+    const keyword = decodeURIComponent(req.params.keyword);
+    const ScrapedData = require('../../models/ScrapedData');
+    const KeywordModel = require('../../models/Keyword');
+    const { log } = require('../../services/activityService');
+
+    const filter = { keyword: { $regex: new RegExp(`^${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } };
+    
+    // Delete all matched staging data
+    const delResult = await ScrapedData.deleteMany(filter);
+    
+    // Attempt to delete the keyword from Keyword collection if it exists
+    await KeywordModel.deleteOne({ name: { $regex: new RegExp(`^${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+
+    await log({
+        userId: req.user.id, action: 'delete_keyword', entityType: 'keyword',
+        metadata: { keyword, deletedCount: delResult.deletedCount }, req
+    });
+
+    res.json({ message: `Successfully deleted ${delResult.deletedCount} staging records for keyword "${keyword}"` });
+  } catch (err) {
+    logger.error('[Analytics] deleteKeyword error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+module.exports = { globalInsights, keywordDashboard, keywordLeads, keywordExport, performanceTable, dashboardAnalytics, deleteKeyword };

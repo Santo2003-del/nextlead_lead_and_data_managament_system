@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const importHistorySchema = new mongoose.Schema({
     file_name: { type: String, required: true },
-    file_hash: { type: String, required: true, unique: true },
+    file_hash: { type: String, required: true },
     size: { type: Number },
     uploaded_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     source: { type: String, default: 'Manual' },

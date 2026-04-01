@@ -1,3 +1,18 @@
+/**
+ * ── Export Service ─────────────────────────────────────────────
+ * 
+ * Generates CSV and XLSX export files from Lead or ScrapedData collections.
+ * 
+ * Features:
+ *   - Supports both 'leads' and 'scraped_data' collections
+ *   - Column selection (export only the columns the user chose)
+ *   - Professional Excel styling (dark header, lead score highlighting)
+ *   - Query timeout protection (maxTimeMS) for large datasets
+ *   - Custom header name overrides (e.g., created_at → IMPORTED DATE)
+ *
+ * Files are written to EXPORT_DIR (default: ./exports/) and expire after 24h.
+ */
+
 const path = require('path');
 const fs = require('fs');
 const { format: csvFormat } = require('fast-csv');
@@ -13,20 +28,33 @@ const ScrapedData = require('../models/ScrapedData');
 const scraperService = require('./scraperService');
 
 const LEAD_COLUMNS = [
-  'id', 'first_name', 'last_name', 'email', 'job_title', 'company', 'industry', 'country',
-  'lead_score', 'status', 'source', 'linkedin', 'created_at',
+  'created_at', 'added_by_name', 'keyword', 'first_name', 'last_name', 'email', 'job_title', 'country', 'company', 'linkedin', 'industry', 'source', 'status'
 ];
 
 const SCRAPER_COLUMNS = [
-  'id', 'keyword', 'first_name', 'last_name', 'email', 'company_name', 'job_title', 'country', 'status', 'created_at'
+  'created_at', 'uploadedByName', 'keyword', 'first_name', 'last_name', 'email', 'job_title', 'country', 'company_name', 'linkedin', 'industry', 'source', 'status'
 ];
 
-// ── Fetch data for export ─────────────────────────────────────
+const HEADER_OVERRIDES = {
+  'created_at': 'IMPORTED DATE',
+  'added_by_name': 'IMPORTED BY',
+  'uploadedByName': 'IMPORTED BY'
+};
+
+/**
+ * Fetches data for export from the appropriate collection.
+ * Applies filters, sorting, and column selection.
+ * Uses maxTimeMS(60000) to prevent queries from hanging on large datasets.
+ * 
+ * @param {Object} filters - Query filters (industry, country, date range, etc.)
+ * @param {string} collection - 'leads' or 'scraped_data'
+ * @returns {Object} { data: Array, cols: Array }
+ */
 const fetchForExport = async (filters, collection) => {
   const selected = filters.selected_columns;
   if (collection === 'scraped_data') {
     const query = scraperService.buildScrapedFilterClause(filters);
-    const data = await ScrapedData.find(query).sort({ created_at: -1 }).lean();
+    const data = await ScrapedData.find(query).sort({ created_at: -1 }).maxTimeMS(60000).lean();
     let cols = SCRAPER_COLUMNS;
     if (selected && selected.length) cols = cols.filter(c => selected.includes(c));
     return { data: data.map(d => ({ ...d, id: d._id.toString() })), cols };
@@ -34,6 +62,7 @@ const fetchForExport = async (filters, collection) => {
     const mongoQuery = buildFilterClause(filters);
     const leads = await Lead.find(mongoQuery)
       .sort({ lead_score: -1, created_at: -1 })
+      .maxTimeMS(60000)
       .populate('added_by', 'name')
       .lean();
     const data = leads.map(l => ({
@@ -54,14 +83,15 @@ const exportCSV = async (filters, exportId, collection = 'leads') => {
 
   await new Promise((resolve, reject) => {
     const ws = fs.createWriteStream(outPath);
-    const stream = csvFormat({ headers: cols.map(k => k.replace(/_/g, ' ').toUpperCase()) });
+    const stream = csvFormat({ headers: cols.map(k => HEADER_OVERRIDES[k] || k.replace(/_/g, ' ').toUpperCase()) });
     stream.pipe(ws);
     data.forEach(l => {
       const row = {};
       cols.forEach(c => {
         let val = l[c];
         if (c === 'keywords' && Array.isArray(val)) val = val.join('|');
-        row[c.replace(/_/g, ' ').toUpperCase()] = val;
+        const headerKey = HEADER_OVERRIDES[c] || c.replace(/_/g, ' ').toUpperCase();
+        row[headerKey] = val;
       });
       stream.write(row);
     });
@@ -82,7 +112,7 @@ const exportExcel = async (filters, exportId, collection = 'leads') => {
   const ws = wb.addWorksheet(sheetName);
 
   ws.columns = cols.map(k => ({
-    header: k.replace(/_/g, ' ').toUpperCase(),
+    header: HEADER_OVERRIDES[k] || k.replace(/_/g, ' ').toUpperCase(),
     key: k,
     width: k === 'id' ? 25 : k === 'email' || k === 'linkedin' ? 30 : 18,
   }));

@@ -26,5 +26,12 @@ const userSchema = new mongoose.Schema({
     }
 });
 
+// ── Indexes ───────────────────────────────────────────────────
+// email index is auto-created by unique:true in schema definition
+userSchema.index({ role: 1 });                    // Team page role filtering
+userSchema.index({ is_active: 1 });               // Active user filtering
+userSchema.index({ created_at: -1 });             // Date-sorted user listing
+userSchema.index({ role: 1, is_active: 1 });      // Combined role + active filter
+
 module.exports = mongoose.model('User', userSchema);
 

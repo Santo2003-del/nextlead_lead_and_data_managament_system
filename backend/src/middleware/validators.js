@@ -35,7 +35,11 @@ const objectIdValidator = (paramName) => [
 
 // ── Lead Validators ───────────────
 const createLeadValidator = [
-    body('email').optional({ checkFalsy: true }).isEmail().withMessage('Valid email is required').normalizeEmail(),
+    body('email').trim().notEmpty().withMessage('Email is required').isEmail().withMessage('Valid email is required').normalizeEmail(),
+    body('first_name').trim().notEmpty().withMessage('First Name is required'),
+    body('last_name').optional().trim(),
+    body('job_title').trim().notEmpty().withMessage('Job Title is required'),
+    body('country').trim().notEmpty().withMessage('Country is required'),
     body('company').trim().notEmpty().withMessage('Company name is required'),
     body('keyword').trim().notEmpty().withMessage('Keyword is required'),
     body('lead_score').optional().isNumeric().isInt({ min: 0, max: 100 }).withMessage('Lead score must be between 0 and 100'),

@@ -1,3 +1,23 @@
+/**
+ * ── Lead Model ───────────────────────────────────────────────────
+ * 
+ * Core data model for the NexLead CRM system.
+ * Stores individual lead/contact records with full business context.
+ * 
+ * Key fields:
+ *   - email (unique, sparse) — primary dedup key
+ *   - keyword / keywordId — links to the Keyword collection for grouping
+ *   - createdBy / added_by — tracks which user created the lead
+ *   - lead_score (0-100) — hot/warm/cold classification
+ *   - metadata (Map) — stores extra columns from imports
+ * 
+ * Indexes are optimized for:
+ *   - Full-text search across company, name, job_title, industry
+ *   - Paginated listing with date/score sorting
+ *   - User-scoped queries (added_by + date)
+ *   - Keyword-based filtering and analytics
+ */
+
 const mongoose = require('mongoose');
 
 const leadSchema = new mongoose.Schema({
@@ -74,19 +94,26 @@ leadSchema.index({
     }
 });
 
-// leadSchema.index({ email: 1 }); // Removed as it is redundant with unique: true in schema
+// ── Single-field indexes ──────────────────────────────────────
+// email index is auto-created by unique:true in schema definition
+leadSchema.index({ domain: 1 });              // Filter by domain
+leadSchema.index({ company: 1 });             // Filter/sort by company name
+leadSchema.index({ industry: 1 });            // Filter by industry
+leadSchema.index({ country: 1 });             // Filter by country
+leadSchema.index({ lead_score: -1 });         // Sort by score (hot leads first)
+leadSchema.index({ status: 1 });              // Filter by pipeline stage
+leadSchema.index({ added_by: 1 });            // User-scoped lead queries
+leadSchema.index({ created_at: -1 });         // Date-sorted listings
+leadSchema.index({ is_enriched: 1 });         // Filter enriched vs raw
+leadSchema.index({ employee_size: 1 });       // Filter by company size
+leadSchema.index({ 'keywords': 1 });          // Keyword array lookups
+leadSchema.index({ keyword: 1 });             // Source keyword filter
 
-leadSchema.index({ domain: 1 });
-leadSchema.index({ company: 1 });
-leadSchema.index({ industry: 1 });
-leadSchema.index({ country: 1 });
-leadSchema.index({ lead_score: -1 });
-leadSchema.index({ status: 1 });
-leadSchema.index({ added_by: 1 });
-leadSchema.index({ created_at: -1 });
-leadSchema.index({ is_enriched: 1 });
-leadSchema.index({ employee_size: 1 });
-leadSchema.index({ 'keywords': 1 }); // Replaces GIN index
-leadSchema.index({ keyword: 1 });
+// ── Compound indexes for common query patterns ────────────────
+// These prevent full collection scans on paginated, filtered queries.
+leadSchema.index({ added_by: 1, created_at: -1 });     // User's leads sorted by date (LeadsPage)
+leadSchema.index({ createdBy: 1, created_at: -1 });    // Analytics performance table
+leadSchema.index({ keyword: 1, created_at: -1 });      // Keyword Intelligence drill-down
+leadSchema.index({ status: 1, created_at: -1 });       // Pipeline stage listing
 
 module.exports = mongoose.model('Lead', leadSchema);

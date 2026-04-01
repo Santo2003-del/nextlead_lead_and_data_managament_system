@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { COUNTRIES } from '../../utils/countries';
 
 const EMPTY = {
-  name: '', email: '', phone: '', linkedin: '', company: '', job_title: '',
+  first_name: '', last_name: '', email: '', phone: '', linkedin: '', company: '', job_title: '',
   website: '', industry: '', country: '', city: '', client_description: '',
   keyword: '', source: '', status: 'new', custom_source: '',
 };
@@ -34,6 +34,14 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
     let initial = EMPTY;
     if (lead) {
       initial = { ...EMPTY, ...lead };
+      
+      // Handle legacy leads that only have full name
+      if (initial.name && !initial.first_name && !initial.last_name) {
+        const parts = initial.name.split(' ');
+        initial.first_name = parts[0] || '';
+        initial.last_name = parts.slice(1).join(' ') || '';
+      }
+
       if (typeof initial.company === 'object' && initial.company !== null) {
         initial.company = initial.company.company_name || initial.company.company || JSON.stringify(initial.company);
       }
@@ -50,7 +58,11 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
-    if (!form.company.trim()) return toast.error('Company name is required');
+    if (!form.first_name?.trim()) return toast.error('First Name is required');
+    if (!form.email?.trim()) return toast.error('Email is required');
+    if (!form.company?.trim()) return toast.error('Company Name is required');
+    if (!form.job_title?.trim()) return toast.error('Job Title is required');
+    if (!form.country?.trim()) return toast.error('Country is required');
     if (!form.keyword?.trim()) return toast.error('Keyword is required');
     setL(true);
 
@@ -123,7 +135,7 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
             </Typography>
           </Grid>
           <Grid item xs={12} sm={6}>{F('company', 'Company *')}</Grid>
-          <Grid item xs={12} sm={6}>{F('job_title', 'Job Title', { placeholder: 'e.g. CEO' })}</Grid>
+          <Grid item xs={12} sm={6}>{F('job_title', 'Job Title *', { placeholder: 'e.g. CEO' })}</Grid>
           <Grid item xs={12} sm={6}>{F('website', 'Website URL')}</Grid>
           <Grid item xs={12} sm={6}>{F('industry', 'Industry')}</Grid>
           <Grid item xs={12} sm={6}>
@@ -131,7 +143,7 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
               options={COUNTRIES}
               value={form.country || ''}
               onChange={(_, val) => set('country', val || '')}
-              renderInput={(p) => <TextField {...p} label="Country" size="small" sx={inputSx} />}
+              renderInput={(p) => <TextField {...p} label="Country *" size="small" sx={inputSx} />}
             />
           </Grid>
 
@@ -142,8 +154,9 @@ export default function LeadForm({ open, onClose, onSaved, lead }) {
               Contact Person
             </Typography>
           </Grid>
-          <Grid item xs={12} sm={6}>{F('name', 'Full Name')}</Grid>
-          <Grid item xs={12} sm={6}>{F('email', 'Email', { type: 'email' })}</Grid>
+          <Grid item xs={12} sm={6}>{F('first_name', 'First Name *')}</Grid>
+          <Grid item xs={12} sm={6}>{F('last_name', 'Last Name')}</Grid>
+          <Grid item xs={12} sm={6}>{F('email', 'Email *', { type: 'email' })}</Grid>
           <Grid item xs={12} sm={6}>{F('phone', 'Phone')}</Grid>
           <Grid item xs={12} sm={6}>{F('linkedin', 'LinkedIn URL')}</Grid>
 

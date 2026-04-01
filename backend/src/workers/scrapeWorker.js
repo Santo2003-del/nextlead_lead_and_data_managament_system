@@ -1,3 +1,24 @@
+/**
+ * ── Scrape Worker ───────────────────────────────────────────────
+ * 
+ * Background job processor for web scraping operations.
+ * Uses Playwright (headless Chromium) to scrape Google Maps
+ * and custom URLs for lead data.
+ * 
+ * Features:
+ *   - Google Maps scraping with scroll-to-load
+ *   - Custom URL scraping with LD+JSON extraction
+ *   - Deduplication via domain/company upsert
+ *   - Configurable concurrency and headless mode
+ * 
+ * Crash Protection:
+ *   - Browser instances are always closed in finally blocks
+ *   - uncaughtException triggers graceful exit (PM2 auto-restarts)
+ *   - SIGTERM/SIGINT close the queue before exit
+ *   - Individual job failures update the ScrapeJob status to 'failed'
+ *   - Playwright timeouts prevent hanging on non-responsive pages
+ */
+
 require('dotenv').config();
 const { queues } = require('../config/redis');
 const connectDB = require('../config/db').connectDB;
@@ -5,12 +26,14 @@ const ScrapeJob = require('../models/ScrapeJob');
 const Lead = require('../models/Lead');
 const logger = require('../config/logger');
 
-// Connect to MongoDB
+// ── Connect to MongoDB ────────────────────────────────────────
 connectDB();
 
 logger.info('[ScrapeWorker] Starting...');
 
-// ── Playwright scraper helper ─────────────────────────────────
+// ── Playwright Google Maps Scraper ────────────────────────────
+// Navigates to Google Maps, scrolls to load results, and extracts
+// business name, phone, website, category for each listing.
 async function scrapeGoogleMaps({ searchQuery, location, maxResults = 20 }) {
   let playwright, browser;
   const results = [];
@@ -28,7 +51,7 @@ async function scrapeGoogleMaps({ searchQuery, location, maxResults = 20 }) {
     const url = `https://www.google.com/maps/search/${encodeURIComponent(`${searchQuery} ${location}`)}`;
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
 
-    // Scroll to load more results
+    // Scroll the results panel to load more listings
     const resultsPanel = page.locator('[role="feed"]');
     for (let s = 0; s < 5 && results.length < maxResults; s++) {
       await resultsPanel.evaluate(el => el.scrollBy(0, 800)).catch(() => { });
@@ -37,6 +60,7 @@ async function scrapeGoogleMaps({ searchQuery, location, maxResults = 20 }) {
 
     const listings = await page.locator('[data-result-index]').all();
 
+    // Extract data from each listing by clicking on it
     for (const listing of listings.slice(0, maxResults)) {
       try {
         await listing.click();
@@ -68,13 +92,16 @@ async function scrapeGoogleMaps({ searchQuery, location, maxResults = 20 }) {
   } catch (err) {
     logger.error('[Scrape] Google Maps error:', err.message);
   } finally {
+    // Always close the browser to prevent memory leaks
     if (browser) await browser.close().catch(() => { });
   }
 
   return results;
 }
 
-// ── Generic URL scraper ───────────────────────────────────────
+// ── Generic URL Scraper ───────────────────────────────────────
+// Extracts structured data (LD+JSON) from any URL.
+// Falls back gracefully if no structured data is found.
 async function scrapeUrl({ url, selectors }) {
   let playwright, browser;
   const results = [];
@@ -85,7 +112,7 @@ async function scrapeUrl({ url, selectors }) {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-    // Extract structured data if available
+    // Extract structured data if available (Schema.org JSON-LD)
     const ldJson = await page.evaluate(() => {
       const el = document.querySelector('script[type="application/ld+json"]');
       try { return el ? JSON.parse(el.textContent) : null; } catch { return null; }
@@ -110,19 +137,23 @@ async function scrapeUrl({ url, selectors }) {
   return results;
 }
 
-// ── Worker ────────────────────────────────────────────────────
+// ── Queue Job Processor ───────────────────────────────────────
+// Processes scrape jobs based on source type (google_maps or custom_url).
+// Results are upserted into the Lead collection with deduplication.
 queues.scrape.process(parseInt(process.env.SCRAPE_CONCURRENCY || '2'), async (job) => {
   const { jobId } = job.data;
 
   const scrapeJob = await ScrapeJob.findById(jobId);
   if (!scrapeJob) return;
 
+  // Mark job as running
   await ScrapeJob.findByIdAndUpdate(jobId, { $set: { status: 'running', started_at: new Date() } });
 
   try {
     let leads = [];
     const config = scrapeJob.config;
 
+    // Route to appropriate scraper based on source type
     if (scrapeJob.source === 'google_maps') {
       leads = await scrapeGoogleMaps({
         searchQuery: config.query,
@@ -133,7 +164,7 @@ queues.scrape.process(parseInt(process.env.SCRAPE_CONCURRENCY || '2'), async (jo
       leads = await scrapeUrl({ url: config.url });
     }
 
-    // Save to DB
+    // Save results to DB with upsert (prevents duplicates)
     let saved = 0;
     for (const lead of leads) {
       try {
@@ -155,6 +186,7 @@ queues.scrape.process(parseInt(process.env.SCRAPE_CONCURRENCY || '2'), async (jo
       }
     }
 
+    // Mark job as completed with results
     await ScrapeJob.findByIdAndUpdate(jobId, {
       $set: {
         status: 'completed',
@@ -169,6 +201,7 @@ queues.scrape.process(parseInt(process.env.SCRAPE_CONCURRENCY || '2'), async (jo
     return { found: leads.length, saved };
   } catch (err) {
     logger.error(`[Scrape] Processing error ${jobId}:`, err.message);
+    // Mark job as failed with error message
     await ScrapeJob.findByIdAndUpdate(jobId, {
       $set: { status: 'failed', error_msg: err.message, finished_at: new Date() }
     }).catch(() => { });
@@ -176,19 +209,28 @@ queues.scrape.process(parseInt(process.env.SCRAPE_CONCURRENCY || '2'), async (jo
   }
 });
 
+// ── Queue Event Handlers ──────────────────────────────────────
 queues.scrape.on('failed', (job, err) => {
   logger.error(`[Scrape] Job failed:`, err.message);
 });
 
-process.on('SIGTERM', async () => {
-  await queues.scrape.close();
+// ── Graceful Shutdown ─────────────────────────────────────────
+const shutdownWorker = async (signal) => {
+  logger.info(`[ScrapeWorker] ${signal} received — shutting down...`);
+  await queues.scrape.close().catch(() => { });
   process.exit(0);
-});
+};
 
+process.on('SIGTERM', () => shutdownWorker('SIGTERM'));
+process.on('SIGINT', () => shutdownWorker('SIGINT'));
+
+// ── Crash Safety ──────────────────────────────────────────────
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('[ScrapeWorker] Unhandled Rejection:', reason);
 });
 
+// Uncaught exceptions: log and exit gracefully. PM2 auto-restarts.
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception:', error);
+  logger.error('[ScrapeWorker] Uncaught Exception:', error);
+  shutdownWorker('uncaughtException').catch(() => process.exit(1));
 });

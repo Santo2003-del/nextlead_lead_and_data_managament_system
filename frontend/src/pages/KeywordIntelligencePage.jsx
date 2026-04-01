@@ -7,7 +7,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import {
-  Search, FileDownload, ArrowBack, TravelExplore, Tag,
+  Search, FileDownload, ArrowBack, TravelExplore, Tag, Delete, Visibility
 } from '@mui/icons-material';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
@@ -52,6 +52,8 @@ export default function KeywordIntelligencePage() {
   const [detailPage, setDetailPage] = useState(0);
   const [detailLoading, setDetailLoading] = useState(false);
   const [exporting, setExporting] = useState(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isMobile = useMediaQuery('(max-width:600px)');
   const { user, isManager } = useAuth(); // Import auth to get role
@@ -115,6 +117,25 @@ export default function KeywordIntelligencePage() {
     finally { setExporting(null); }
   };
 
+  const handleDeleteKeyword = async () => {
+    if (!detailKw) return;
+    setDeleting(true);
+    const tid = toast.loading(`Deleting all records for keyword "${detailKw}"...`);
+    try {
+      await api.delete(`/analytics/keywords/${encodeURIComponent(detailKw)}`);
+      toast.success(`Successfully deleted keyword "${detailKw}"`, { id: tid });
+      setDeleteConfirmOpen(false);
+      setDetailKw(null);
+      // Reload main dashboard
+      const r = await api.get('/analytics/keywords');
+      setData(r.data);
+    } catch (err) {
+      toast.error('Failed to delete keyword', { id: tid });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Detail view
   if (detailKw) {
     return (
@@ -132,6 +153,13 @@ export default function KeywordIntelligencePage() {
             </Typography>
           </Box>
           <Box sx={{ flex: 1 }} />
+          {isAdmin && (
+            <Button variant="outlined" size="small" startIcon={<Delete />}
+              onClick={() => setDeleteConfirmOpen(true)}
+              sx={{ borderColor: 'rgba(239,68,68,0.3)', color: '#ef4444', mr: 1 }}>
+              Delete Keyword
+            </Button>
+          )}
           {isAdmin && (
             <Button variant="outlined" size="small" startIcon={<FileDownload />}
               onClick={() => handleExport(detailKw, 'csv')}
@@ -155,7 +183,7 @@ export default function KeywordIntelligencePage() {
             <Table size="small" stickyHeader>
               <TableHead>
                 <TableRow>
-                  {['Company', 'First Name', 'Last Name', 'Email', 'Job Title', 'Country', 'Score', 'Status', 'Added By'].map(h => (
+                  {['Imported Date', 'Imported By', 'Keyword', 'First Name', 'Last Name', 'Email', 'Job Title', 'Country', 'Company Name', 'LinkedIn', 'Industry', 'Source'].map(h => (
                     <TableCell key={h} sx={headSx}>{h}</TableCell>
                   ))}
                 </TableRow>
@@ -163,30 +191,22 @@ export default function KeywordIntelligencePage() {
               <TableBody>
                 {detailLoading
                   ? [...Array(5)].map((_, i) => (
-                    <TableRow key={i}><TableCell colSpan={9}><Skeleton sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} /></TableCell></TableRow>
+                    <TableRow key={i}><TableCell colSpan={13}><Skeleton sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} /></TableCell></TableRow>
                   ))
                   : detailLeads.map(row => (
                     <TableRow key={row.id} sx={{ '&:hover': { bgcolor: 'rgba(14,165,233,0.04)' } }}>
-                      <TableCell sx={cellSx}><Typography variant="body2" fontWeight={600} color="#f0f9ff">{row.company || '—'}</Typography></TableCell>
+                      <TableCell sx={cellSx}>{row.created_at ? new Date(row.created_at).toLocaleDateString() : '—'}</TableCell>
+                      <TableCell sx={cellSx}>{row.uploadedByName || '—'}</TableCell>
+                      <TableCell sx={cellSx}>{row.keyword || '—'}</TableCell>
                       <TableCell sx={cellSx}>{row.first_name || '—'}</TableCell>
                       <TableCell sx={cellSx}>{row.last_name || '—'}</TableCell>
                       <TableCell sx={cellSx}>{row.email || '—'}</TableCell>
-                      <TableCell sx={cellSx}><Typography variant="body2" color="#38bdf8">{row.job_title || '—'}</Typography></TableCell>
+                      <TableCell sx={cellSx}>{row.job_title || '—'}</TableCell>
                       <TableCell sx={cellSx}>{row.country || '—'}</TableCell>
-                      <TableCell sx={cellSx}>
-                        <Chip label={row.lead_score || 0} size="small" sx={{
-                          bgcolor: row.lead_score >= 80 ? 'rgba(16,185,129,0.12)' : row.lead_score >= 50 ? 'rgba(245,158,11,0.12)' : 'rgba(239,68,68,0.12)',
-                          color: row.lead_score >= 80 ? '#10b981' : row.lead_score >= 50 ? '#f59e0b' : '#ef4444',
-                          fontWeight: 700, height: 20, fontSize: 11
-                        }} />
-                      </TableCell>
-                      <TableCell sx={cellSx}>
-                        <Chip label={row.status} size="small" sx={{
-                          bgcolor: 'rgba(14,165,233,0.1)', color: '#38bdf8', height: 18, fontSize: 10,
-                          textTransform: 'capitalize'
-                        }} />
-                      </TableCell>
-                      <TableCell sx={cellSx}>{row.added_by_name || 'System'}</TableCell>
+                      <TableCell sx={cellSx}><Typography variant="body2" fontWeight={600} color="#f0f9ff">{row.company_name || '—'}</Typography></TableCell>
+                      <TableCell sx={cellSx}>{row.linkedin ? <a href={row.linkedin} style={{color: '#38bdf8'}} target="_blank" rel="noopener noreferrer">View</a> : '—'}</TableCell>
+                      <TableCell sx={cellSx}>{row.industry || '—'}</TableCell>
+                      <TableCell sx={cellSx}>{row.source || '—'}</TableCell>
                     </TableRow>
                   ))}
               </TableBody>
@@ -200,6 +220,23 @@ export default function KeywordIntelligencePage() {
               '& .MuiIconButton-root': { color: 'rgba(240,249,255,0.4)' }
             }} />
         </Card>
+
+        {/* Delete Confirm */}
+        <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}
+          PaperProps={{ sx: { borderRadius: 3, bgcolor: '#0d1f3c', border: '1px solid rgba(239,68,68,0.2)' } }}>
+          <DialogTitle sx={{ color: '#fca5a5', fontWeight: 700 }}>Confirm Deletion</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="rgba(240,249,255,0.7)">
+              Are you sure you want to permanently delete ALL records associated with the keyword <strong>"{detailKw}"</strong>? This action cannot be undone.
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setDeleteConfirmOpen(false)} sx={{ color: 'rgba(240,249,255,0.5)' }}>Cancel</Button>
+            <Button color="error" variant="contained" disabled={deleting} onClick={handleDeleteKeyword}>
+              {deleting ? <CircularProgress size={18} color="inherit" /> : 'Yes, Delete All'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     );
   }
@@ -246,15 +283,28 @@ export default function KeywordIntelligencePage() {
           }} />
       </Box>
 
-      {/* Keyword Cards Grid */}
+      {/* Keyword Table Layout */}
       {loading ? (
-        <Grid container spacing={3}>
-          {[...Array(8)].map((_, i) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={`skel-${i}`}>
-              <Skeleton variant="rectangular" height={180} sx={{ borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)' }} />
-            </Grid>
-          ))}
-        </Grid>
+        <Card sx={{ borderRadius: 3, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', overflow: 'hidden' }}>
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  {['Keyword', 'Total Records', 'Imported Date', 'Imported By', 'Actions'].map(h => (
+                    <TableCell key={h} sx={headSx}>{h}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {[...Array(8)].map((_, i) => (
+                  <TableRow key={`skel-${i}`}>
+                     <TableCell colSpan={5}><Skeleton sx={{ bgcolor: 'rgba(255,255,255,0.04)' }} height={40}/></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Card>
       ) : paged.length === 0 ? (
         <Card sx={{ p: 6, textAlign: 'center', bgcolor: '#0d1f3c', borderRadius: 3, border: '1px solid rgba(14,165,233,0.1)' }}>
           <Typography color="rgba(240,249,255,0.4)">
@@ -262,91 +312,83 @@ export default function KeywordIntelligencePage() {
           </Typography>
         </Card>
       ) : (
-        <>
-          <Grid container spacing={3}>
-            {paged.map((kw, idx) => {
-              const i = page * rpp + idx; // Global index to check absolute #1 rank
-              const isTop = i === 0 && !search; // Only highlight absolute top when not searching
-              return (
-                <Grid item xs={12} sm={6} md={4} lg={3} key={kw.keyword}>
-                  <Card sx={{
-                    borderRadius: 3, bgcolor: '#0d1f3c',
-                    border: isTop ? '1px solid #a78bfa' : '1px solid rgba(14,165,233,0.15)',
-                    position: 'relative', overflow: 'hidden', cursor: 'pointer',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: isTop ? '0 10px 25px rgba(139,92,246,0.2)' : '0 10px 25px rgba(14,165,233,0.15)',
-                      borderColor: isTop ? '#c4b5fd' : '#38bdf8'
-                    }
-                  }} onClick={() => openDetail(kw.keyword)}>
-                    {isTop && (
-                      <Box sx={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 4, background: 'linear-gradient(90deg, #8b5cf6, #ec4899)' }} />
-                    )}
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        <Card sx={{ borderRadius: 3, bgcolor: '#0d1f3c', border: '1px solid rgba(14,165,233,0.1)', overflow: 'hidden' }}>
+          <TableContainer sx={{ maxHeight: 'calc(100vh - 300px)' }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow>
+                  {['Keyword', 'Total Records', 'Imported Date', 'Imported By', 'Actions'].map(h => (
+                    <TableCell key={h} sx={headSx}>{h}</TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {paged.map((kw, idx) => {
+                  const i = page * rpp + idx; // Global index to check absolute #1 rank
+                  const isTop = i === 0 && !search;
+                  return (
+                    <TableRow key={kw.keyword} hover sx={{ '&:hover': { bgcolor: 'rgba(14,165,233,0.04)' }, transition: 'all 0.2s', bgcolor: isTop ? 'rgba(139,92,246,0.05)' : 'transparent' }}>
+                      <TableCell sx={cellSx}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Chip label={kw.keyword} size="small" icon={<Tag sx={{ fontSize: 13 }} />}
-                            sx={{
-                              bgcolor: isTop ? 'rgba(139,92,246,0.15)' : 'rgba(14,165,233,0.1)',
-                              color: isTop ? '#c4b5fd' : '#38bdf8', fontWeight: 700, fontSize: 12, height: 26
-                            }} />
+                              sx={{
+                                bgcolor: isTop ? 'rgba(139,92,246,0.15)' : 'rgba(14,165,233,0.1)',
+                                color: isTop ? '#c4b5fd' : '#38bdf8', fontWeight: 700, fontSize: 12, height: 26,
+                                maxWidth: '100%', '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis' }
+                              }} />
                           {isTop && (
-                            <Chip label="Top Keyword" size="small"
-                              sx={{ bgcolor: 'rgba(236,72,153,0.15)', color: '#f472b6', fontSize: 10, height: 20, fontWeight: 800 }} />
+                             <Chip label="Top" size="small"
+                               sx={{ bgcolor: 'rgba(236,72,153,0.15)', color: '#f472b6', fontSize: 10, height: 20, fontWeight: 800 }} />
                           )}
                         </Box>
-                        {isAdmin && (
-                          <Tooltip title="Export CSV">
-                            <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleExport(kw.keyword, 'csv'); }}
-                              disabled={exporting === kw.keyword}
-                              sx={{ color: 'rgba(240,249,255,0.4)', '&:hover': { color: '#38bdf8', bgcolor: 'rgba(56,189,248,0.1)' } }}>
-                              {exporting === kw.keyword ? <CircularProgress size={16} color="inherit" /> : <FileDownload sx={{ fontSize: 18 }} />}
-                            </IconButton>
-                          </Tooltip>
-                        )}
-                      </Box>
-
-                      <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1, mb: 3 }}>
-                        <Typography variant="h3" fontWeight={800} color="#f0f9ff" sx={{ lineHeight: 1 }}>
+                      </TableCell>
+                      <TableCell sx={cellSx}>
+                        <Typography variant="body2" fontWeight={800} color="#f0f9ff">
                           {kw.totalLeads?.toLocaleString()}
                         </Typography>
-                        <Typography variant="caption" color="rgba(240,249,255,0.4)" mb={0.5} sx={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Records
-                        </Typography>
-                      </Box>
-
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 1.5, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <Box>
-                          <Typography variant="caption" color="rgba(240,249,255,0.4)" display="block" sx={{ mb: 0.2 }}>Last Activity</Typography>
-                          <Typography variant="body2" color="#e2f4ff" fontWeight={500}>{kw.firstSeen ? new Date(kw.firstSeen).toLocaleDateString() : '—'}</Typography>
+                      </TableCell>
+                      <TableCell sx={cellSx}>{kw.firstSeen ? new Date(kw.firstSeen).toLocaleDateString() : '—'}</TableCell>
+                      <TableCell sx={cellSx}>{kw.topContributorName || '—'}</TableCell>
+                      <TableCell sx={cellSx}>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'nowrap' }}>
+                          <Tooltip title="View Records">
+                            <IconButton size="small" sx={{ color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', borderRadius: 1.5, p: 0.75, '&:hover': { bgcolor: 'rgba(56,189,248,0.1)' } }} onClick={() => openDetail(kw.keyword)}>
+                              <Visibility sx={{ fontSize: 18 }} />
+                            </IconButton>
+                          </Tooltip>
+                          {isAdmin && (
+                            <>
+                              <Tooltip title="Delete">
+                                <IconButton size="small" sx={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 1.5, p: 0.75, '&:hover': { bgcolor: 'rgba(239,68,68,0.1)' } }} onClick={(e) => { e.stopPropagation(); setDetailKw(kw.keyword); setDeleteConfirmOpen(true); }}>
+                                  <Delete sx={{ fontSize: 18 }} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Download CSV">
+                                <IconButton size="small" disabled={exporting === kw.keyword} sx={{ color: '#10b981', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 1.5, p: 0.75, '&:hover': { bgcolor: 'rgba(16,185,129,0.1)' } }} onClick={(e) => { e.stopPropagation(); handleExport(kw.keyword, 'csv'); }}>
+                                  {exporting === kw.keyword ? <CircularProgress size={16} color="inherit" /> : <FileDownload sx={{ fontSize: 18 }} />}
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
                         </Box>
-                        <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="caption" color="rgba(240,249,255,0.4)" display="block" sx={{ mb: 0.2 }}>Contributor</Typography>
-                          <Typography variant="body2" color="#e2f4ff" fontWeight={500} sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 100 }}>
-                            {kw.topContributorName}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              );
-            })}
-          </Grid>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
 
-          <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
-            <TablePagination component="div" count={filtered.length} page={page} rowsPerPage={rpp}
+          <TablePagination component="div" count={filtered.length} page={page} rowsPerPage={rpp}
               onPageChange={(_, p) => setPage(p)}
               onRowsPerPageChange={e => { setRpp(+e.target.value); setPage(0); }}
-              rowsPerPageOptions={[12, 24, 48, 96]}
+              rowsPerPageOptions={[10, 25, 50, 100]}
               sx={{
-                color: 'rgba(240,249,255,0.5)', borderTop: 'none',
+                color: 'rgba(240,249,255,0.5)', borderTop: '1px solid rgba(255,255,255,0.05)',
                 '& .MuiIconButton-root': { color: 'rgba(240,249,255,0.4)', bgcolor: 'rgba(255,255,255,0.02)', mx: 0.5, borderRadius: 2 },
                 '& .MuiSelect-icon': { color: 'rgba(240,249,255,0.4)' }
               }} />
-          </Box>
-        </>
+        </Card>
       )}
     </Box>
   );
