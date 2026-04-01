@@ -31,3 +31,5 @@ ecosystem.config.js
 # OS
 .DS_Store
 Thumbs.db
+nginx.conf
+package-lock.json

@@ -10,7 +10,7 @@
  * Performance considerations:
  *   - All aggregation pipelines use maxTimeMS to prevent long-running queries
  *   - allowDiskUse enabled for pipelines that may exceed 100MB memory limit
- *   - rawActivity push removed from performanceTable to prevent OOM
+ *   - rawActivity push uses only 4 minimal fields (date, keyword, source, importedBy)
  *   - Keyword export uses streaming for large datasets
  */
 
@@ -311,10 +311,9 @@ const performanceTable = async (req, res) => {
 
     // Role-based visibility (REMOVED: Now system-wide visibility for all users)
 
-    // ── OPTIMIZED: Removed rawActivity $push ──────────────────
-    // Previous version pushed ALL lead data into an array per user.
-    // With millions of leads, this caused Out-Of-Memory crashes.
-    // Now only aggregates counts — activity details fetched separately.
+    // ── rawActivity: push only the 4 minimal fields needed by
+    //    the frontend activity table (date, keyword, source, importedBy).
+    //    This avoids the OOM issue caused by pushing entire lead documents.
     const pipeline = [
       { $match: matchStage },
       {
@@ -329,6 +328,14 @@ const performanceTable = async (req, res) => {
           },
           leadsThisMonth: {
             $sum: { $cond: [{ $gte: [{ $ifNull: ['$createdAt', '$created_at'] }, startOfMonth] }, 1, 0] }
+          },
+          rawActivity: {
+            $push: {
+              date: { $ifNull: ['$createdAt', '$created_at'] },
+              keyword: { $ifNull: ['$keyword', { $arrayElemAt: ['$keywords', 0] }] },
+              source: '$source',
+              importedBy: { $ifNull: ['$createdByName', 'System'] }
+            }
           }
         }
       },
@@ -349,7 +356,8 @@ const performanceTable = async (req, res) => {
           totalLeads: 1,
           leadsToday: 1,
           leadsThisWeek: 1,
-          leadsThisMonth: 1
+          leadsThisMonth: 1,
+          rawActivity: 1
         }
       }
     ];
@@ -381,7 +389,8 @@ const performanceTable = async (req, res) => {
         totalLeads: 0,
         leadsToday: 0,
         leadsThisWeek: 0,
-        leadsThisMonth: 0
+        leadsThisMonth: 0,
+        rawActivity: []
       };
     });
 
