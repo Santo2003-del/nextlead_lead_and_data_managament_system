@@ -105,7 +105,8 @@ export default function LeadsPage() {
           const s = await api.get(`/leads/exports/${data.exportId}`);
           if (s.data.export.status === 'ready') {
             clearInterval(poll);
-            window.open(`/api/leads/exports/${data.exportId}/download`, '_blank');
+            const token = localStorage.getItem('token');
+            window.open(`/api/leads/exports/${data.exportId}/download?token=${token}`, '_blank');
             setExpO(false);
             setExping(false);
           } else if (s.data.export.status === 'failed') {

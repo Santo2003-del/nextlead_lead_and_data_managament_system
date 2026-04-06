@@ -24,7 +24,7 @@ const leadSchema = new mongoose.Schema({
     first_name: { type: String },
     last_name: { type: String },
     job_title: { type: String },
-    email: { type: String, unique: true, sparse: true },
+    email: { type: String, sparse: true },
     phone: { type: String },
     linkedin: { type: String },
 
@@ -95,7 +95,9 @@ leadSchema.index({
 });
 
 // ── Single-field indexes ──────────────────────────────────────
-// email index is auto-created by unique:true in schema definition
+// email index is auto-created by unique:true in schema definition (removed, using compound instead)
+leadSchema.index({ email: 1, keyword: 1 }, { unique: true }); // Allow same email with different keywords
+leadSchema.index({ email: 1 });               // Email lookups
 leadSchema.index({ domain: 1 });              // Filter by domain
 leadSchema.index({ company: 1 });             // Filter/sort by company name
 leadSchema.index({ industry: 1 });            // Filter by industry
